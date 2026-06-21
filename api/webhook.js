@@ -1,5 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const admin = require('firebase-admin');
 
 // ── Firebase Admin init ────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ const db = admin.firestore();
 
 // ── Clients ────────────────────────────────────────────────────────────────────
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const claude = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ── Category lists (must match finance_tracker.html) ──────────────────────────
 const EXPENSE_CATS = [
@@ -27,15 +27,11 @@ const INCOME_CATS = [
   'Project fee','Retainer','Sales/Resale','Event','Laisee','Other income',
 ];
 
-// ── Parse natural language with Claude ────────────────────────────────────────
+// ── Parse natural language with Gemini ────────────────────────────────────────
 async function parseEntry(text) {
   const today = new Date().toISOString().split('T')[0];
-  const msg = await claude.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 256,
-    messages: [{
-      role: 'user',
-      content: `You are Anna's finance tracker assistant. Parse this message into a structured expense or income entry.
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const prompt = `You are Anna's finance tracker assistant. Parse this message into a structured expense or income entry.
 Today is ${today} (YYYY-MM-DD).
 
 Message: "${text}"
@@ -57,10 +53,10 @@ Respond with JSON only, no explanation:
   "date": "YYYY-MM-DD",
   "cat": "category from the list above",
   "client": "client/person name or empty string"
-}`,
-    }],
-  });
-  return JSON.parse(msg.content[0].text.trim());
+}`;
+  const result = await model.generateContent(prompt);
+  const raw = result.response.text().trim().replace(/^```json\n?|\n?```$/g, '');
+  return JSON.parse(raw);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
