@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anna's Finance Tracker</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #F7F6F2; color: #1A1A18; padding: 0; }
+  .app { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+  h2 { font-size: 22px; font-weight: 600; margin-bottom: 3px; }
+  .subtitle { font-size: 13px; color: #6B6A66; margin-bottom: 1.5rem; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 1px solid #E4E2DA; flex-wrap: wrap; }
+  .tab { padding: 10px 16px; font-size: 14px; background: none; border: none; cursor: pointer; color: #6B6A66; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: #1A1A18; border-bottom: 2px solid #1A1A18; font-weight: 600; }
+  .metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .metric { background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 10px; padding: 1rem; }
+  .metric-label { font-size: 11px; color: #6B6A66; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .metric-value { font-size: 20px; font-weight: 600; }
+  .section-title { font-size: 12px; font-weight: 600; color: #6B6A66; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .form-card { background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .form-row.three { grid-template-columns: 2fr 1fr 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+  .form-group label { font-size: 12px; color: #6B6A66; }
+  .form-group input, .form-group select { width: 100%; padding: 8px 10px; border: 1px solid #DAD8D0; border-radius: 8px; font-size: 14px; background: #FFFFFF; color: #1A1A18; }
+  .btn-row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+  .btn { padding: 8px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; border: 1px solid #DAD8D0; background: #FFFFFF; color: #1A1A18; }
+  .btn.primary { background: #1A1A18; color: #FFFFFF; border-color: transparent; }
+  .btn.inc { background: #E1F5EE; color: #0F6E56; border-color: #5DCAA5; }
+  .btn.exp { background: #FAECE7; color: #993C1D; border-color: #F0997B; }
+  .type-toggle { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .entries-list { display: flex; flex-direction: column; gap: 6px; }
+  .entry-row { display: flex; align-items: center; padding: 10px 14px; background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 8px; gap: 12px; }
+  .entry-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .entry-desc { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .entry-meta { font-size: 12px; color: #6B6A66; white-space: nowrap; }
+  .entry-cat { font-size: 11px; padding: 2px 7px; border-radius: 9999px; margin-right: 4px; }
+  .entry-amount { font-size: 15px; font-weight: 600; flex-shrink: 0; }
+  .entry-del { background: none; border: none; cursor: pointer; color: #6B6A66; font-size: 16px; padding: 2px 6px; flex-shrink: 0; opacity: 0.5; }
+  .entry-del:hover { opacity: 1; color: #D85A30; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
+  .filter-bar select, .filter-bar input { padding: 6px 10px; font-size: 13px; border: 1px solid #DAD8D0; border-radius: 8px; background: #FFFFFF; color: #1A1A18; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .chart-wrap { position: relative; width: 100%; height: 260px; margin-top: 1rem; }
+  .bar-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 7px 12px; background: #F7F6F2; border-radius: 8px; }
+  .bar-wrap { flex: 1; height: 4px; background: #E4E2DA; border-radius: 2px; }
+  .bar { height: 4px; border-radius: 2px; }
+  .month-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .pill { padding: 4px 11px; font-size: 12px; border: 1px solid #DAD8D0; border-radius: 9999px; cursor: pointer; background: #FFFFFF; color: #6B6A66; white-space: nowrap; }
+  .pill.active { background: #1A1A18; color: #FFFFFF; border-color: transparent; }
+  .no-entries { font-size: 14px; color: #6B6A66; text-align: center; padding: 2rem; }
+  .summary-msg { font-size: 13px; color: #6B6A66; margin-bottom: 10px; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: #6B6A66; margin-top: 8px; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend-sq { width: 10px; height: 10px; border-radius: 2px; }
+  .data-note { font-size: 12px; color: #6B6A66; background: #FFF8E8; border: 1px solid #F0E0B8; border-radius: 8px; padding: 10px 14px; margin-bottom: 1.5rem; }
+  ::placeholder { color: #ADABA3; }
+  .import-drop { border: 2px dashed #DAD8D0; border-radius: 12px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .import-drop:hover, .import-drop.drag { border-color: #1A1A18; background: #F0EFEA; }
+  .import-drop-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .import-drop-sub { font-size: 13px; color: #6B6A66; }
+  .import-browse { color: #1A1A18; text-decoration: underline; cursor: pointer; }
+  .import-stats-bar { display: flex; gap: 28px; padding: 14px 18px; background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .import-stat-val { font-size: 20px; font-weight: 600; display: block; margin-bottom: 2px; }
+  .import-stat-lbl { font-size: 11px; color: #6B6A66; text-transform: uppercase; letter-spacing: 0.04em; }
+  .import-tbl-wrap { background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 10px; overflow: hidden; overflow-x: auto; margin-bottom: 1rem; }
+  .import-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .import-tbl th { background: #F7F6F2; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #6B6A66; padding: 9px 14px; text-align: left; border-bottom: 1px solid #E4E2DA; white-space: nowrap; }
+  .import-tbl td { padding: 9px 14px; border-bottom: 1px solid #F7F6F2; vertical-align: middle; }
+  .import-tbl tbody tr:last-child td { border-bottom: none; }
+  .import-tbl tr.row-skip td { opacity: 0.4; }
+  .badge-new { background: #E1F5EE; color: #0F6E56; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; }
+  .badge-skip { background: #F0EFEA; color: #6B6A66; font-size: 11px; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; }
+  .import-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+  .import-msg { font-size: 12px; color: #6B6A66; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h2>Anna's finance tracker</h2>
+  <p class="subtitle">Freelance income & expenses — exported snapshot</p>
+  <div class="data-note">This file stores new entries in your browser's local storage on this device. To keep using it across devices, periodically re-export an updated copy from Claude.</div>
+  <div class="tabs">
+    <button class="tab active" onclick="showPage('overview')">Overview</button>
+    <button class="tab" onclick="showPage('add')">Add entry</button>
+    <button class="tab" onclick="showPage('records')">Records</button>
+    <button class="tab" onclick="showPage('reports')">Reports</button>
+    <button class="tab" onclick="showPage('import')">Import CSV</button>
+  </div>
+
+  <div id="page-overview" class="page active">
+    <div class="month-pills" id="month-pills"></div>
+    <div class="metrics" id="metrics"></div>
+    <div class="section-title">All entries this month</div>
+    <div class="entries-list" id="recent-entries"></div>
+  </div>
+
+  <div id="page-add" class="page">
+    <div class="form-card">
+      <div class="type-toggle">
+        <button class="btn inc" id="btn-income" onclick="setType('income')">+ Income</button>
+        <button class="btn exp" id="btn-expense" onclick="setType('expense')">− Expense</button>
+      </div>
+      <div class="form-row three">
+        <div class="form-group"><label>Description</label><input type="text" id="f-desc" placeholder="e.g. Shooting, dinner"/></div>
+        <div class="form-group"><label>Amount (HKD)</label><input type="number" id="f-amount" placeholder="0" min="0" step="0.01"/></div>
+        <div class="form-group"><label>Date</label><input type="date" id="f-date"/></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Category</label><select id="f-cat"></select></div>
+        <div class="form-group"><label>Client / tag</label><input type="text" id="f-client" placeholder="e.g. Momo, CK"/></div>
+      </div>
+      <div class="form-group"><label>Notes</label><input type="text" id="f-notes" placeholder="Optional"/></div>
+      <div class="btn-row">
+        <button class="btn" onclick="clearForm()">Clear</button>
+        <button class="btn primary" onclick="addEntry()">Save entry</button>
+      </div>
+    </div>
+    <div id="add-msg" style="font-size:13px;text-align:center;"></div>
+  </div>
+
+  <div id="page-records" class="page">
+    <div class="filter-bar">
+      <select id="f-type" onchange="renderRecords()">
+        <option value="all">All types</option>
+        <option value="income">Income</option>
+        <option value="expense">Expenses</option>
+      </select>
+      <select id="f-cat-filter" onchange="renderRecords()"></select>
+      <select id="f-month-filter" onchange="renderRecords()"></select>
+      <input type="text" id="f-search" placeholder="Search..." oninput="renderRecords()" style="flex:1;min-width:120px;"/>
+    </div>
+    <div id="records-summary" class="summary-msg"></div>
+    <div class="entries-list" id="all-entries"></div>
+  </div>
+
+  <div id="page-reports" class="page">
+    <div class="month-pills" id="year-tabs" style="margin-bottom:1rem;"></div>
+    <div class="metrics" id="metrics-annual"></div>
+    <div class="section-title" style="margin-top:1.25rem">Monthly income vs expenses</div>
+    <div class="legend">
+      <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
+      <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
+    </div>
+    <div class="chart-wrap"><canvas id="monthly-chart" role="img" aria-label="Monthly income and expenses bar chart"></canvas></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem;">
+      <div><div class="section-title">Top expense categories</div><div id="exp-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      <div><div class="section-title">Income by client</div><div id="inc-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+    </div>
+  </div>
+
+  <div id="page-import" class="page">
+    <div class="form-card" style="margin-bottom:1.5rem">
+      <div class="section-title" style="margin-bottom:12px">Import from Pennyworth</div>
+      <div class="import-drop" id="import-drop" onclick="document.getElementById('import-file').click()">
+        <div class="import-drop-title">Drop your Pennyworth CSV here</div>
+        <div class="import-drop-sub">or <span class="import-browse">browse for file</span></div>
+        <div class="import-drop-sub" style="margin-top:8px;font-size:11px;color:#ADABA3">Pennyworth_defaultbook_Income&amp;Expense_*.csv</div>
+      </div>
+      <input type="file" id="import-file" accept=".csv" style="display:none" onchange="handleImportFile(this.files[0])"/>
+    </div>
+    <div id="import-preview" style="display:none">
+      <div class="import-stats-bar" id="import-stats-bar"></div>
+      <div class="month-pills" id="import-filter-bar" style="margin-bottom:12px"></div>
+      <div class="import-tbl-wrap">
+        <table class="import-tbl" id="import-tbl"></table>
+      </div>
+      <div class="import-actions">
+        <div class="import-msg" id="import-msg"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="resetImport()">Clear</button>
+          <button class="btn primary" id="import-btn" onclick="confirmImport()">Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// ── Firebase config — paste your project values here ─────────────────────────
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDmJJ63YafEW4X3EWb9RajZqra2Z3dF2V8",
+  authDomain: "anna-finance-tracker.firebaseapp.com",
+  projectId: "anna-finance-tracker",
+  storageBucket: "anna-finance-tracker.firebasestorage.app",
+  messagingSenderId: "728929553505",
+  appId: "1:728929553505:web:7fc3cf9e47dbd671acae20"
+};
+
+const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
+const EXPENSE_CATS = ['Food & drinks','Socializing','Transport','Entertainment','Music & media','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null;
+let _db=null, _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _seeded=false;
+
+const SEED_DATA = [
+  {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
+  {id:1001,type:'income',desc:'Bevis graphic price list x2',amount:600,date:'2024-10-20',cat:'Graphic design',client:'Bevis'},
+  {id:1002,type:'income',desc:'Nee payment (2x7500)',amount:15000,date:'2024-11-01',cat:'Project fee',client:'Nee'},
+  {id:1003,type:'income',desc:'Momo BabyJ shooting',amount:1200,date:'2024-11-10',cat:'Shooting',client:'Momo'},
+  {id:1004,type:'income',desc:'Bevis reverse video',amount:250,date:'2024-12-05',cat:'Video editing',client:'Bevis'},
+  {id:1005,type:'income',desc:'Bevis convo video',amount:250,date:'2024-12-08',cat:'Video editing',client:'Bevis'},
+  {id:1006,type:'income',desc:'Bevis friend video',amount:300,date:'2024-12-10',cat:'Video editing',client:'Bevis'},
+  {id:1007,type:'income',desc:'Bevis website video',amount:550,date:'2024-12-15',cat:'Video editing',client:'Bevis'},
+  {id:1008,type:'income',desc:'Momo BabyJ shooting',amount:1200,date:'2024-12-12',cat:'Shooting',client:'Momo'},
+  {id:1009,type:'income',desc:'Chung Fengze helper',amount:640,date:'2024-12-18',cat:'Project fee',client:'Chung'},
+  {id:1010,type:'income',desc:'Nee payment',amount:7500,date:'2024-12-20',cat:'Project fee',client:'Nee'},
+  {id:1011,type:'income',desc:'Sell LKH SEVEN',amount:350,date:'2025-01-10',cat:'Sales/Resale',client:'Carousell'},
+  {id:1012,type:'income',desc:'Momo BabyJ shooting x3 days',amount:3600,date:'2025-01-15',cat:'Shooting',client:'Momo'},
+  {id:1013,type:'income',desc:'Momo Jan graphic design posts x13',amount:4550,date:'2025-01-25',cat:'Graphic design',client:'Momo'},
+  {id:1014,type:'income',desc:'Momo Feb graphic design posts x3',amount:1050,date:'2025-02-10',cat:'Graphic design',client:'Momo'},
+  {id:1015,type:'income',desc:'Laisee received',amount:6010,date:'2025-01-29',cat:'Laisee',client:'Family'},
+  {id:1016,type:'income',desc:'YiuWing 九澤 video + caption',amount:800,date:'2025-02-15',cat:'Video editing',client:'YiuWing'},
+  {id:1017,type:'income',desc:'YiuWing Singleton Just Sing caption',amount:300,date:'2025-02-20',cat:'Writing/Caption',client:'YiuWing'},
+  {id:1018,type:'income',desc:'Momo Aloha shooting',amount:1200,date:'2025-03-05',cat:'Shooting',client:'Momo'},
+  {id:1019,type:'income',desc:'Momo insurance shooting',amount:1200,date:'2025-03-08',cat:'Shooting',client:'Momo'},
+  {id:1020,type:'income',desc:'Momo BabyJ shooting',amount:1200,date:'2025-03-12',cat:'Shooting',client:'Momo'},
+  {id:1021,type:'income',desc:'Momo LCK Beauty shooting',amount:1200,date:'2025-03-15',cat:'Shooting',client:'Momo'},
+  {id:1022,type:'income',desc:'Momo March video edits x4',amount:1400,date:'2025-03-20',cat:'Video editing',client:'Momo'},
+  {id:1023,type:'income',desc:'Momo YALC IG posts x3',amount:1050,date:'2025-03-22',cat:'Graphic design',client:'Momo'},
+  {id:1024,type:'income',desc:'NMG freelance 7 days',amount:3920,date:'2025-03-25',cat:'Freelance day rate',client:'NMG'},
+  {id:1025,type:'income',desc:'ISN works 1st part',amount:6000,date:'2025-03-28',cat:'Project fee',client:'ISN'},
+  {id:1026,type:'income',desc:'Momo Jessica shooting 6/4',amount:1200,date:'2025-04-06',cat:'Shooting',client:'Momo'},
+  {id:1027,type:'income',desc:'Momo Edward shooting 18/4',amount:1200,date:'2025-04-18',cat:'Shooting',client:'Momo'},
+  {id:1028,type:'income',desc:'Momo posts/vids Apr',amount:8855,date:'2025-04-25',cat:'Graphic design',client:'Momo'},
+  {id:1029,type:'income',desc:'NMG work 8.75 days',amount:4900,date:'2025-04-28',cat:'Freelance day rate',client:'NMG'},
+  {id:1030,type:'income',desc:'Chung YiuWing translation',amount:2000,date:'2025-04-22',cat:'Writing/Caption',client:'Chung'},
+  {id:1031,type:'income',desc:'Momo Jessica shooting',amount:1200,date:'2025-05-05',cat:'Shooting',client:'Momo'},
+  {id:1032,type:'income',desc:'Momo Winnie shooting',amount:1200,date:'2025-05-08',cat:'Shooting',client:'Momo'},
+  {id:1033,type:'income',desc:'Momo Winnie talk shooting 2h',amount:600,date:'2025-05-10',cat:'Shooting',client:'Momo'},
+  {id:1034,type:'income',desc:'Momo Jessica home shooting',amount:1200,date:'2025-05-14',cat:'Shooting',client:'Momo'},
+  {id:1035,type:'income',desc:'Momo YALC shooting',amount:1200,date:'2025-05-18',cat:'Shooting',client:'Momo'},
+  {id:1036,type:'income',desc:'Momo posts/vids May',amount:5096,date:'2025-05-25',cat:'Graphic design',client:'Momo'},
+  {id:1037,type:'income',desc:'NMG work 10 days',amount:5530,date:'2025-05-28',cat:'Freelance day rate',client:'NMG'},
+  {id:1038,type:'income',desc:'Chung YiuWing Emcee script',amount:500,date:'2025-05-20',cat:'Writing/Caption',client:'Chung'},
+  {id:1039,type:'income',desc:'Chung YiuWing 末日 caption',amount:300,date:'2025-05-22',cat:'Writing/Caption',client:'Chung'},
+  {id:1040,type:'income',desc:'Porpor pocket money',amount:2000,date:'2025-05-30',cat:'Other income',client:'Family'},
+  {id:1041,type:'income',desc:'Momo TW ChinMed shooting 3/6',amount:1200,date:'2025-06-03',cat:'Shooting',client:'Momo'},
+  {id:1042,type:'income',desc:'Momo HKE division video',amount:350,date:'2025-06-10',cat:'Video editing',client:'Momo'},
+  {id:1043,type:'income',desc:'Momo Winnie shooting 14/6',amount:1200,date:'2025-06-14',cat:'Shooting',client:'Momo'},
+  {id:1044,type:'income',desc:'Momo Jessica shooting 22/6',amount:1200,date:'2025-06-22',cat:'Shooting',client:'Momo'},
+  {id:1045,type:'income',desc:'Momo Jessica posts x3',amount:400,date:'2025-06-25',cat:'Graphic design',client:'Momo'},
+  {id:1046,type:'income',desc:'NMG work 12 days',amount:6650,date:'2025-06-28',cat:'Freelance day rate',client:'NMG'},
+  {id:1047,type:'income',desc:'Carousell HKH Cycle of Life poster',amount:300,date:'2025-06-15',cat:'Graphic design',client:'Carousell'},
+  {id:1048,type:'income',desc:'Carousell Matt Force album',amount:700,date:'2025-06-20',cat:'Sales/Resale',client:'Carousell'},
+  {id:1049,type:'income',desc:'Riza',amount:1000,date:'2025-06-18',cat:'Project fee',client:'Riza'},
+  {id:1050,type:'income',desc:'Porpor pocket money',amount:2000,date:'2025-06-30',cat:'Other income',client:'Family'},
+  {id:1051,type:'income',desc:'Momo 賴醫 shooting 6/7',amount:1200,date:'2025-07-06',cat:'Shooting',client:'Momo'},
+  {id:1052,type:'income',desc:'Momo Jessica post',amount:400,date:'2025-07-15',cat:'Graphic design',client:'Momo'},
+  {id:1053,type:'income',desc:'WYC fans video edit',amount:400,date:'2025-07-10',cat:'Video editing',client:'WYC'},
+  {id:1054,type:'income',desc:'Carousell CKH Senses Inherited',amount:500,date:'2025-07-18',cat:'Sales/Resale',client:'Carousell'},
+  {id:1055,type:'income',desc:'Carousell MC posters',amount:80,date:'2025-07-22',cat:'Sales/Resale',client:'Carousell'},
+  {id:1056,type:'income',desc:'CK work parttime 7h',amount:700,date:'2025-07-24',cat:'Freelance day rate',client:'CK'},
+  {id:1057,type:'income',desc:'NMG work 13 days',amount:7280,date:'2025-07-28',cat:'Freelance day rate',client:'NMG'},
+  {id:1058,type:'income',desc:'Momo Jessica shooting 6/8',amount:1200,date:'2025-08-06',cat:'Shooting',client:'Momo'},
+  {id:1059,type:'income',desc:'Momo 10% bonus',amount:120,date:'2025-08-10',cat:'Other income',client:'Momo'},
+  {id:1060,type:'income',desc:'CK work 12h',amount:1200,date:'2025-08-15',cat:'Freelance day rate',client:'CK'},
+  {id:1061,type:'income',desc:'NMG work 10 days',amount:5600,date:'2025-08-25',cat:'Freelance day rate',client:'NMG'},
+  {id:1062,type:'income',desc:'Sam work Soi Cheang interview',amount:3000,date:'2025-08-20',cat:'Project fee',client:'Sam'},
+  {id:1063,type:'income',desc:'Baolin logo',amount:500,date:'2025-08-28',cat:'Graphic design',client:'Baolin'},
+  {id:1064,type:'income',desc:'Momo Winnie shooting 3/9',amount:1200,date:'2025-09-03',cat:'Shooting',client:'Momo'},
+  {id:1065,type:'income',desc:'Momo 賴醫 shooting 10/9',amount:1200,date:'2025-09-10',cat:'Shooting',client:'Momo'},
+  {id:1066,type:'income',desc:'Momo Winnie editing',amount:350,date:'2025-09-15',cat:'Video editing',client:'Momo'},
+  {id:1067,type:'income',desc:'Momo 10% bonus',amount:275,date:'2025-09-18',cat:'Other income',client:'Momo'},
+  {id:1068,type:'income',desc:'NMG work 11 days',amount:6160,date:'2025-09-25',cat:'Freelance day rate',client:'NMG'},
+  {id:1069,type:'income',desc:'CK work 3 days',amount:1750,date:'2025-09-22',cat:'Freelance day rate',client:'CK'},
+  {id:1070,type:'income',desc:'Minizine article x1',amount:150,date:'2025-09-10',cat:'Writing/Caption',client:'Minizine'},
+  {id:1071,type:'income',desc:'Minizine eslite events x2',amount:150,date:'2025-09-20',cat:'Event',client:'Minizine'},
+  {id:1072,type:'income',desc:'Rami Rebone by Chloe',amount:2500,date:'2025-09-15',cat:'Graphic design',client:'Rami/Rebone'},
+  {id:1073,type:'income',desc:'Sam work Soi Cheang remaining',amount:3000,date:'2025-09-25',cat:'Project fee',client:'Sam'},
+  {id:1074,type:'income',desc:'Shirley Moontang 25',amount:600,date:'2025-09-20',cat:'Project fee',client:'Shirley'},
+  {id:1075,type:'income',desc:'Kobe MiM 1st month',amount:3500,date:'2025-09-28',cat:'Retainer',client:'Kobe'},
+  {id:1076,type:'income',desc:'NMG work 12 days',amount:6720,date:'2025-10-28',cat:'Freelance day rate',client:'NMG'},
+  {id:1077,type:'income',desc:'Momo LaiE shooting 15/10',amount:1200,date:'2025-10-15',cat:'Shooting',client:'Momo'},
+  {id:1078,type:'income',desc:'CK work 2 days',amount:1250,date:'2025-10-20',cat:'Freelance day rate',client:'CK'},
+  {id:1079,type:'income',desc:'Minizine articles x3',amount:300,date:'2025-10-10',cat:'Writing/Caption',client:'Minizine'},
+  {id:1080,type:'income',desc:'Minizine shooting article Stepout',amount:300,date:'2025-10-15',cat:'Event',client:'Minizine'},
+  {id:1081,type:'income',desc:'Rebone by Chloe',amount:2500,date:'2025-10-22',cat:'Graphic design',client:'Rami/Rebone'},
+  {id:1082,type:'income',desc:'Kobe MiM 2nd month',amount:5500,date:'2025-10-28',cat:'Retainer',client:'Kobe'},
+  {id:1083,type:'income',desc:'Carousell powerbank',amount:400,date:'2025-10-18',cat:'Sales/Resale',client:'Carousell'},
+  {id:1084,type:'income',desc:'Carousell MC HKH poster',amount:200,date:'2025-10-25',cat:'Graphic design',client:'Carousell'},
+  {id:1085,type:'income',desc:'LCY guitar',amount:500,date:'2025-10-28',cat:'Project fee',client:'LCY'},
+  {id:1086,type:'income',desc:'NMG work 6 days',amount:3430,date:'2025-11-25',cat:'Freelance day rate',client:'NMG'},
+  {id:1087,type:'income',desc:'Momo shooting 26/11',amount:1200,date:'2025-11-26',cat:'Shooting',client:'Momo'},
+  {id:1088,type:'income',desc:'CK work 2 days',amount:1200,date:'2025-11-20',cat:'Freelance day rate',client:'CK'},
+  {id:1089,type:'income',desc:'ISN work 2nd part',amount:6000,date:'2025-11-28',cat:'Project fee',client:'ISN'},
+  {id:1090,type:'income',desc:'NMG work 12 days',amount:7560,date:'2025-12-28',cat:'Freelance day rate',client:'NMG'},
+  {id:1091,type:'income',desc:'CK work 3 days + followup',amount:2000,date:'2025-12-20',cat:'Freelance day rate',client:'CK'},
+  {id:1092,type:'income',desc:'Cbeauty pt 28/12',amount:450,date:'2025-12-28',cat:'Freelance day rate',client:'Cbeauty'},
+  {id:1093,type:'income',desc:'Minizine eslite archi event',amount:75,date:'2025-12-10',cat:'Event',client:'Minizine'},
+  {id:1094,type:'income',desc:'Minizine xixi event',amount:75,date:'2025-12-20',cat:'Event',client:'Minizine'},
+  {id:1095,type:'income',desc:'Sam Cathay shooting',amount:4630,date:'2025-12-15',cat:'Shooting',client:'Sam'},
+  {id:1096,type:'income',desc:'Sell Menitrust tix x2',amount:1313,date:'2025-12-18',cat:'Sales/Resale',client:'Carousell'},
+  {id:1097,type:'income',desc:'Kobe 3rd month',amount:6000,date:'2025-12-28',cat:'Retainer',client:'Kobe'},
+  {id:1098,type:'income',desc:'NMG work 2 days',amount:1260,date:'2026-01-15',cat:'Freelance day rate',client:'NMG'},
+  {id:1099,type:'income',desc:'Cbeauty pt 41h',amount:3690,date:'2026-01-28',cat:'Freelance day rate',client:'Cbeauty'},
+  {id:1100,type:'income',desc:'CK work 4 days 18.5h',amount:1900,date:'2026-01-20',cat:'Freelance day rate',client:'CK'},
+  {id:1101,type:'income',desc:'Momo shooting 15/1',amount:1200,date:'2026-01-15',cat:'Shooting',client:'Momo'},
+  {id:1102,type:'income',desc:'Ben ISN event 31/1',amount:2000,date:'2026-01-31',cat:'Event',client:'ISN'},
+  {id:1103,type:'income',desc:'Kobe last month',amount:6500,date:'2026-01-28',cat:'Retainer',client:'Kobe'},
+  {id:1104,type:'income',desc:'Carousell child ukulele',amount:130,date:'2026-01-20',cat:'Sales/Resale',client:'Carousell'},
+  {id:2001,type:'income',desc:'Cbeauty pt 20h',amount:1800,date:'2026-02-28',cat:'Freelance day rate',client:'Cbeauty'},
+  {id:2002,type:'income',desc:'CK work Feb',amount:1200,date:'2026-02-28',cat:'Freelance day rate',client:'CK'},
+  {id:1107,type:'income',desc:'Minizine brut shooting article',amount:300,date:'2026-02-10',cat:'Writing/Caption',client:'Minizine'},
+  {id:1108,type:'income',desc:'Minizine toyol article',amount:150,date:'2026-02-15',cat:'Writing/Caption',client:'Minizine'},
+  {id:1109,type:'income',desc:'Minizine eslite mason',amount:75,date:'2026-02-20',cat:'Event',client:'Minizine'},
+  {id:2003,type:'income',desc:'Laisee x33 total',amount:7120,date:'2026-02-01',cat:'Laisee',client:'Family'},
+  {id:1111,type:'income',desc:'CK work (incl $215 claim, $113.81 AI)',amount:3350,date:'2026-03-20',cat:'Freelance day rate',client:'CK'},
+  {id:1112,type:'income',desc:'Cbeauty pt',amount:2070,date:'2026-03-25',cat:'Freelance day rate',client:'Cbeauty'},
+  {id:1113,type:'income',desc:'Momo LaiE shooting 8/3',amount:1200,date:'2026-03-08',cat:'Shooting',client:'Momo'},
+  {id:1114,type:'income',desc:'ISN event 6/3',amount:1200,date:'2026-03-06',cat:'Event',client:'ISN'},
+  {id:1115,type:'income',desc:'Lawrence video editing',amount:2500,date:'2026-03-15',cat:'Video editing',client:'Lawrence'},
+  {id:2004,type:'income',desc:'Minizine LGBTMAP article',amount:200,date:'2026-03-10',cat:'Writing/Caption',client:'Minizine'},
+  {id:2005,type:'income',desc:'Minizine ALAN article',amount:200,date:'2026-03-20',cat:'Writing/Caption',client:'Minizine'},
+  {id:1118,type:'income',desc:'Carousell LKH perfume',amount:300,date:'2026-03-12',cat:'Sales/Resale',client:'Carousell'},
+  {id:1119,type:'income',desc:'Carousell concert tix',amount:40,date:'2026-03-18',cat:'Sales/Resale',client:'Carousell'},
+  {id:1120,type:'income',desc:'KC CV design',amount:800,date:'2026-03-22',cat:'Graphic design',client:'KC'},
+  {id:1121,type:'income',desc:'AFAA',amount:300,date:'2026-03-25',cat:'Project fee',client:'AFAA'},
+  {id:2006,type:'income',desc:'Drip Music Mar',amount:1000,date:'2026-03-28',cat:'Project fee',client:'Drip Music'},
+  {id:1123,type:'income',desc:'CK work Apr (105h, incl Veeton Deevid)',amount:10150,date:'2026-04-30',cat:'Freelance day rate',client:'CK'},
+  {id:1124,type:'income',desc:'Lawrence video editing',amount:2500,date:'2026-04-30',cat:'Video editing',client:'Lawrence'},
+  {id:1125,type:'income',desc:'Cbeauty pt Apr',amount:1665,date:'2026-04-30',cat:'Freelance day rate',client:'Cbeauty'},
+  {id:1126,type:'income',desc:'ISN work (KV + 11/4 event)',amount:1500,date:'2026-04-11',cat:'Event',client:'ISN'},
+  {id:1127,type:'income',desc:'Sam shooting 17/4',amount:3000,date:'2026-04-17',cat:'Shooting',client:'Sam'},
+  {id:1128,type:'income',desc:'JK Shopify deposit',amount:1500,date:'2026-04-30',cat:'Project fee',client:'JK'},
+  {id:1129,type:'income',desc:'Livenation XHS',amount:2150,date:'2026-04-30',cat:'Project fee',client:'Livenation'},
+  {id:2010,type:'income',desc:'Drip Music Apr',amount:6200,date:'2026-04-30',cat:'Project fee',client:'Drip Music'},
+  {id:1130,type:'income',desc:'CK work May (61.5h, last week excl. \u2192 June)',amount:6200,date:'2026-05-31',cat:'Freelance day rate',client:'CK'},
+  {id:1131,type:'income',desc:'Lawrence video editing',amount:2500,date:'2026-05-31',cat:'Video editing',client:'Lawrence'},
+  {id:1132,type:'income',desc:'Momo LaiE shooting',amount:1200,date:'2026-05-31',cat:'Shooting',client:'Momo'},
+  {id:2007,type:'income',desc:'Cbeauty pt May',amount:3870,date:'2026-05-31',cat:'Freelance day rate',client:'Cbeauty'},
+  {id:2008,type:'income',desc:'Drip Music May',amount:6200,date:'2026-05-31',cat:'Project fee',client:'Drip Music'},
+  {id:1133,type:'income',desc:'Carousell 草東',amount:250,date:'2026-05-31',cat:'Sales/Resale',client:'Carousell'},
+  {id:1134,type:'income',desc:'Concert tix MC Ariel (50x5)',amount:250,date:'2026-05-31',cat:'Sales/Resale',client:'Concert tix'},
+  {id:1135,type:'income',desc:'Concert tix MC Krystal (50x2)',amount:100,date:'2026-05-31',cat:'Sales/Resale',client:'Concert tix'},
+  {id:1136,type:'income',desc:'Concert tix Weeknd (50x4)',amount:200,date:'2026-05-31',cat:'Sales/Resale',client:'Concert tix'},
+  {id:1137,type:'income',desc:'Concert tix Posty (150x3)',amount:450,date:'2026-05-31',cat:'Sales/Resale',client:'Concert tix'},
+  {id:9000,type:'expense',desc:'Sushiro lunch',amount:150,date:'2026-04-13',cat:'Food & drinks',client:'Food'},
+  {id:9001,type:'expense',desc:'Cotton on top x2',amount:458,date:'2026-04-12',cat:'Shopping',client:'Clothes'},
+  {id:9002,type:'expense',desc:'MCD buy back home',amount:45.5,date:'2026-04-12',cat:'Food & drinks',client:'Food'},
+  {id:9003,type:'expense',desc:'Doughbro with malha',amount:143,date:'2026-04-10',cat:'Food & drinks',client:'Food'},
+  {id:9004,type:'expense',desc:'Inoshishi dinner',amount:550.37,date:'2026-04-08',cat:'Food & drinks',client:'Food'},
+  {id:9005,type:'expense',desc:'Octopus topup',amount:200,date:'2026-04-08',cat:'Transport',client:'Octopus'},
+  {id:9012,type:'expense',desc:'Gym PT ($750x16 lessons)',amount:6000,date:'2026-04-04',cat:'Beauty & health',client:'PT fee'},
+  {id:9016,type:'expense',desc:'Claude pay KCW',amount:250,date:'2026-04-02',cat:'Phone & subscriptions',client:'AI'},
+  {id:9024,type:'expense',desc:'HKU Space French 持續進修基金',amount:9552,date:'2026-03-03',cat:'Books & education',client:'Education'},
+  {id:9025,type:'expense',desc:'Sandy Lam show internal',amount:1118,date:'2026-03-10',cat:'Entertainment',client:'Concert'},
+  {id:9029,type:'expense',desc:'Commercial radio year fee',amount:360,date:'2026-02-25',cat:'Phone & subscriptions',client:'Phone'},
+  {id:9030,type:'expense',desc:'Doctor',amount:1000,date:'2026-02-25',cat:'Beauty & health',client:'Health'},
+  {id:9033,type:'expense',desc:'LYT bday dinner',amount:1829.5,date:'2026-02-11',cat:'Gifts & treats',client:'Gift'},
+  {id:9034,type:'expense',desc:'Wash teeth',amount:700,date:'2026-02-11',cat:'Beauty & health',client:'Health'},
+  {id:9043,type:'expense',desc:'Jace concert tix',amount:1489,date:'2025-12-19',cat:'Entertainment',client:'Concert'},
+  {id:9045,type:'expense',desc:'YSL watch vintage',amount:3800,date:'2025-12-25',cat:'Shopping',client:'Stuff'},
+  {id:9047,type:'expense',desc:'KCW apple watch',amount:1999,date:'2025-11-20',cat:'Gifts & treats',client:'Gift'},
+  {id:9049,type:'expense',desc:'Clockenflap 3days',amount:1700,date:'2025-10-22',cat:'Entertainment',client:'Concert'},
+  {id:9050,type:'expense',desc:'Barefoot Asia shoes',amount:1490.6,date:'2025-10-11',cat:'Shopping',client:'Stuff'},
+  {id:9053,type:'expense',desc:'Men I Trust concert',amount:943.3,date:'2025-09-25',cat:'Entertainment',client:'Concert'},
+  {id:9056,type:'expense',desc:'LKH white summer merch',amount:550,date:'2025-08-22',cat:'Entertainment',client:'Concert'},
+  {id:9058,type:'expense',desc:'Taiwan hotel+flight',amount:2809,date:'2025-07-19',cat:'Travel',client:'Travel'},
+  {id:9059,type:'expense',desc:'Malay flight+bnb',amount:2570,date:'2025-07-17',cat:'Travel',client:'Travel'},
+  {id:9065,type:'expense',desc:'December money in mums card',amount:4000,date:'2024-12-31',cat:'Fees',client:'Transfer fee'},
+];
+
+function getEntries(){return _entries;}
+function _writeEntry(e){return _db.collection('anna_tracker').doc(String(e.id)).set(e);}
+function _deleteDoc(id){return _db.collection('anna_tracker').doc(String(id)).delete();}
+function _seedFirestore(){
+  const b=_db.batch();
+  SEED_DATA.forEach(e=>b.set(_db.collection('anna_tracker').doc(String(e.id)),e));
+  return b.commit();
+}
+function renderCurrent(){
+  if(_currentPage==='overview')renderOverview();
+  if(_currentPage==='records'){populateRecordFilters(_entries);renderRecords();}
+  if(_currentPage==='reports')renderReports();
+}
+function initApp(){
+  if(FIREBASE_CONFIG.apiKey==='REPLACE_ME'){
+    document.querySelector('.app').innerHTML='<div style="padding:3rem;text-align:center"><p style="font-size:15px;font-weight:600;color:#D85A30">Firebase not configured yet</p><p style="font-size:13px;color:#6B6A66;margin-top:8px">Open this file and fill in your FIREBASE_CONFIG values. See the setup guide for instructions.</p></div>';
+    return;
+  }
+  firebase.initializeApp(FIREBASE_CONFIG);
+  _db=firebase.firestore();
+  _db.enableIndexedDbPersistence().catch(()=>{});
+  _db.collection('anna_tracker').onSnapshot(snap=>{
+    if(snap.empty&&!_seeded){_seeded=true;_seedFirestore();return;}
+    _entries=snap.docs.map(d=>d.data());
+    _entries.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+    renderCurrent();
+  });
+  _db.collection('anna_meta').doc('imported_uuids').onSnapshot(snap=>{
+    if(snap.exists)_importedUUIDs=new Set(snap.data().uuids||[]);
+  });
+}
+function fmt(n){return '$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});}
+function today(){return new Date().toISOString().split('T')[0];}
+
+function setType(t){
+  currentType=t;
+  ['income','expense'].forEach(x=>{const b=document.getElementById('btn-'+x);b.style.opacity=x===t?'1':'0.55';b.style.fontWeight=x===t?'600':'400';});
+  document.getElementById('f-cat').innerHTML=(t==='income'?INCOME_CATS:EXPENSE_CATS).map(c=>`<option>${c}</option>`).join('');
+}
+function addEntry(){
+  const desc=document.getElementById('f-desc').value.trim();
+  const amount=parseFloat(document.getElementById('f-amount').value);
+  const date=document.getElementById('f-date').value;
+  const cat=document.getElementById('f-cat').value;
+  const client=document.getElementById('f-client').value.trim();
+  const notes=document.getElementById('f-notes').value.trim();
+  if(!desc||!amount||!date){showMsg('Fill in description, amount and date','#D85A30');return;}
+  const entry={id:Date.now(),type:currentType,desc,amount,date,cat,client,notes};
+  _writeEntry(entry).then(()=>{showMsg('Saved!','#1D9E75');clearForm();}).catch(()=>showMsg('Error saving — check connection','#D85A30'));
+}
+function showMsg(m,c){const el=document.getElementById('add-msg');el.textContent=m;el.style.color=c;setTimeout(()=>el.textContent='',3000);}
+function clearForm(){['f-desc','f-amount','f-client','f-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-date').value=today();}
+function deleteEntry(id){_deleteDoc(id).catch(console.error);}
+
+function entryHTML(e){
+  const isIn=e.type==='income';
+  const dc=isIn?'#1D9E75':'#D85A30',bg=isIn?'#E1F5EE':'#FAECE7',tc=isIn?'#0F6E56':'#993C1D';
+  return `<div class="entry-row">
+    <div class="entry-dot" style="background:${dc}"></div>
+    <div style="flex:1;min-width:0">
+      <div class="entry-desc">${e.desc}</div>
+      <div class="entry-meta"><span class="entry-cat" style="background:${bg};color:${tc}">${e.cat}</span>${e.client?e.client+' · ':''}${e.date}</div>
+    </div>
+    <div class="entry-amount" style="color:${dc}">${isIn?'+':'-'}${fmt(e.amount)}</div>
+    <button class="entry-del" onclick="deleteEntry(${e.id})">×</button>
+  </div>`;
+}
+
+function renderOverview(){
+  const entries=getEntries();
+  const keys=[...new Set(entries.map(e=>{const d=new Date(e.date);return`${d.getFullYear()}-${d.getMonth()}`;}))].sort((a,b)=>{const[ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return ay!==by?ay-by:am-bm;});
+  if(keys.length&&!keys.includes(`${selYear}-${selMonth}`)){const l=keys[keys.length-1].split('-').map(Number);selYear=l[0];selMonth=l[1];}
+  const me=entries.filter(e=>{const d=new Date(e.date);return d.getMonth()===selMonth&&d.getFullYear()===selYear;});
+  const inc=me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+  const exp=me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+  const p=inc-exp;
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric"><div class="metric-label">Income</div><div class="metric-value" style="color:#1D9E75">${fmt(inc)}</div></div>
+    <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value" style="color:#D85A30">${fmt(exp)}</div></div>
+    <div class="metric"><div class="metric-label">Net profit</div><div class="metric-value" style="color:${p>=0?'#1D9E75':'#D85A30'}">${p<0?'-':''}${fmt(p)}</div></div>`;
+  document.getElementById('recent-entries').innerHTML=me.length?me.map(e=>entryHTML(e)).join(''):'<div class="no-entries">No entries this month.</div>';
+  document.getElementById('month-pills').innerHTML=keys.slice().reverse().map(key=>{
+    const[y,m]=key.split('-').map(Number);const act=m===selMonth&&y===selYear;
+    return`<span class="pill${act?' active':''}" onclick="selMonth=${m};selYear=${y};renderOverview()">${MONTHS[m]} ${y}</span>`;
+  }).join('');
+}
+
+function renderRecords(){
+  const entries=getEntries();
+  const tf=document.getElementById('f-type').value;
+  const cf=document.getElementById('f-cat-filter').value;
+  const mf=document.getElementById('f-month-filter').value;
+  const s=document.getElementById('f-search').value.toLowerCase();
+  const filtered=entries.filter(e=>{
+    if(tf!=='all'&&e.type!==tf)return false;
+    if(cf&&e.cat!==cf)return false;
+    if(mf){const d=new Date(e.date);if(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`!==mf)return false;}
+    if(s&&!e.desc.toLowerCase().includes(s)&&!(e.client||'').toLowerCase().includes(s))return false;
+    return true;
+  });
+  const ti=filtered.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+  const te=filtered.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+  document.getElementById('records-summary').textContent=`${filtered.length} entries · Income: ${fmt(ti)} · Expenses: ${fmt(te)} · Net: ${ti-te>=0?'':'-'}${fmt(ti-te)}`;
+  document.getElementById('all-entries').innerHTML=filtered.length?filtered.map(e=>entryHTML(e)).join(''):'<div class="no-entries">No entries match.</div>';
+}
+
+function populateRecordFilters(entries){
+  const months=[...new Set(entries.map(e=>{const d=new Date(e.date);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}))].sort().reverse();
+  const cats=[...new Set(entries.map(e=>e.cat).filter(Boolean))].sort();
+  document.getElementById('f-month-filter').innerHTML='<option value="">All months</option>'+months.map(m=>`<option>${m}</option>`).join('');
+  document.getElementById('f-cat-filter').innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option>${c}</option>`).join('');
+}
+
+function renderReports(){
+  const entries=getEntries();
+  const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))].sort();
+  document.getElementById('year-tabs').innerHTML=years.map(y=>`<span class="pill${y===repYear?' active':''}" onclick="repYear=${y};renderReports()">${y}</span>`).join('');
+  const ye=entries.filter(e=>new Date(e.date).getFullYear()===repYear);
+  const ti=ye.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+  const te=ye.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+  const tp=ti-te;
+  document.getElementById('metrics-annual').innerHTML=`
+    <div class="metric"><div class="metric-label">Annual income</div><div class="metric-value" style="color:#1D9E75">${fmt(ti)}</div></div>
+    <div class="metric"><div class="metric-label">Annual expenses</div><div class="metric-value" style="color:#D85A30">${fmt(te)}</div></div>
+    <div class="metric"><div class="metric-label">Annual profit</div><div class="metric-value" style="color:${tp>=0?'#1D9E75':'#D85A30'}">${tp<0?'-':''}${fmt(tp)}</div></div>`;
+  const md=MONTHS.map((_,i)=>{const me=ye.filter(e=>new Date(e.date).getMonth()===i);return{income:me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0),expense:me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0)};});
+  if(chartInst)chartInst.destroy();
+  chartInst=new Chart(document.getElementById('monthly-chart'),{type:'bar',data:{labels:MONTHS,datasets:[{label:'Income',data:md.map(d=>d.income),backgroundColor:'#5DCAA5',borderRadius:4},{label:'Expenses',data:md.map(d=>d.expense),backgroundColor:'#F0997B',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}}}}});
+  const ec={};ye.filter(e=>e.type==='expense').forEach(e=>{ec[e.cat]=(ec[e.cat]||0)+e.amount;});
+  const se=Object.entries(ec).sort((a,b)=>b[1]-a[1]).slice(0,6);const me2=se[0]?.[1]||1;
+  document.getElementById('exp-breakdown').innerHTML=se.map(([c,a])=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(a/me2*100)}%;background:#F0997B"></div></div><div style="font-size:13px;font-weight:600;min-width:60px;text-align:right;color:#D85A30">${fmt(a)}</div></div>`).join('');
+  const ic={};ye.filter(e=>e.type==='income').forEach(e=>{ic[e.client||e.cat]=(ic[e.client||e.cat]||0)+e.amount;});
+  const si=Object.entries(ic).sort((a,b)=>b[1]-a[1]).slice(0,6);const mi=si[0]?.[1]||1;
+  document.getElementById('inc-breakdown').innerHTML=si.map(([c,a])=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(a/mi*100)}%;background:#5DCAA5"></div></div><div style="font-size:13px;font-weight:600;min-width:60px;text-align:right;color:#1D9E75">${fmt(a)}</div></div>`).join('');
+}
+
+function showPage(name){
+  _currentPage=name;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim().toLowerCase().includes(name.substring(0,3)))t.classList.add('active');});
+  if(name==='overview')renderOverview();
+  if(name==='records'){populateRecordFilters(getEntries());renderRecords();}
+  if(name==='reports')renderReports();
+}
+
+document.getElementById('f-date').value=today();
+setType('income');
+initApp();
+
+// ── Import CSV ───────────────────────────────────────────────────────────────
+const PCAT_MAP = {
+  // expenses
+  'Food':'Food & drinks','Uber/Taxi':'Transport','Transportation':'Transport',
+  'octopus':'Transport','Socializing':'Socializing','concert':'Entertainment',
+  'film':'Entertainment','films':'Entertainment','Health':'Beauty & health',
+  'Beauty':'Beauty & health','Phone':'Phone & subscriptions','AI':'Phone & subscriptions',
+  'Education':'Books & education','Books':'Books & education',
+  'gift or treat':'Gifts & treats','travel':'Travel','stuff':'Shopping',
+  'Clothes':'Shopping','CD':'Music & media','mj':'Leisure',
+  'Utilities':'Utilities','Transfer fee':'Fees',
+  // income
+  'Salary':'Freelance day rate','Freelance':'Freelance day rate',
+  'Income':'Other income',
+};
+function mapPCat(cat,type){return PCAT_MAP[cat]||(type==='income'?'Other income':'Misc');}
+function pennydateToISO(d){return`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;}
+function getImportedUUIDs(){return _importedUUIDs;}
+function saveImportedUUIDs(s){_db.collection('anna_meta').doc('imported_uuids').set({uuids:[...s]});}
+
+let _importRows=[], _importFilter='all';
+
+function parseCSVLine(line){
+  const cols=[];let cur='',q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){q=!q;}else if(c===','&&!q){cols.push(cur);cur='';}else{cur+=c;}
+  }
+  cols.push(cur);
+  return cols.map(s=>s.trim());
+}
+
+function handleImportFile(file){
+  if(!file)return;
+  const r=new FileReader();
+  r.onload=e=>previewImport(e.target.result);
+  r.readAsText(file,'UTF-8');
+}
+
+function previewImport(text){
+  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(lines.length<2){alert('Empty or invalid CSV.');return;}
+  const headers=parseCSVLine(lines[0]);
+  const idx=h=>headers.indexOf(h);
+  const existing=getEntries();
+  const uuids=getImportedUUIDs();
+  // fingerprint existing entries by date+amount to catch already-seeded entries
+  const fpSet=new Set(existing.map(e=>`${e.date}|${Math.round(e.amount*100)}`));
+  _importRows=[];
+  for(let i=1;i<lines.length;i++){
+    const cols=parseCSVLine(lines[i]);
+    const g=h=>(cols[idx(h)]||'');
+    const uuid=g('UUID'),rawDate=g('Date');
+    if(!uuid||rawDate.length!==8)continue;
+    const date=pennydateToISO(rawDate);
+    const amount=parseFloat(g('Amount'))||0;
+    if(!amount)continue;
+    const rawType=(g('Income&Expense')||'').toUpperCase();
+    const type=rawType==='INC'?'income':'expense';
+    const pennyCat=g('Category');
+    const cat=mapPCat(pennyCat,type);
+    const desc=g('Memo')||pennyCat;
+    const fp=`${date}|${Math.round(amount*100)}`;
+    let status='new';
+    if(uuids.has(uuid))status='skip';
+    else if(fpSet.has(fp))status='skip';
+    _importRows.push({uuid,date,amount,type,cat,desc,pennyCat,status});
+  }
+  _importRows.sort((a,b)=>b.date.localeCompare(a.date));
+  _importFilter='all';
+  renderImportPreview();
+}
+
+function renderImportPreview(){
+  const newR=_importRows.filter(r=>r.status==='new');
+  const skipR=_importRows.filter(r=>r.status!=='new');
+  const show=_importFilter==='new'?newR:_importFilter==='skip'?skipR:_importRows;
+  document.getElementById('import-preview').style.display='block';
+  document.getElementById('import-stats-bar').innerHTML=`
+    <div><span class="import-stat-val" style="color:#1D9E75">${newR.length}</span><span class="import-stat-lbl">New to import</span></div>
+    <div><span class="import-stat-val" style="color:#6B6A66">${skipR.length}</span><span class="import-stat-lbl">Already in tracker</span></div>
+    <div><span class="import-stat-val">${_importRows.length}</span><span class="import-stat-lbl">Total in file</span></div>
+  `;
+  document.getElementById('import-filter-bar').innerHTML=`
+    <span class="pill${_importFilter==='all'?' active':''}" onclick="_importFilter='all';renderImportPreview()">All (${_importRows.length})</span>
+    <span class="pill${_importFilter==='new'?' active':''}" onclick="_importFilter='new';renderImportPreview()">New (${newR.length})</span>
+    <span class="pill${_importFilter==='skip'?' active':''}" onclick="_importFilter='skip';renderImportPreview()">Already tracked (${skipR.length})</span>
+  `;
+  const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const rows=show.map(r=>{
+    const isNew=r.status==='new';
+    const col=r.type==='income'?'#1D9E75':'#D85A30';
+    const sign=r.type==='income'?'+':'-';
+    const catNote=r.pennyCat&&r.pennyCat!==r.cat?`<span style="font-size:11px;color:#ADABA3;margin-left:4px">(${esc(r.pennyCat)})</span>`:'';
+    return`<tr class="${isNew?'':'row-skip'}">
+      <td style="white-space:nowrap;color:#6B6A66">${r.date}</td>
+      <td><span style="font-size:11px;font-weight:600;color:${col}">${r.type==='income'?'INC':'EXP'}</span></td>
+      <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(r.desc)}">${esc(r.desc)}</td>
+      <td style="white-space:nowrap">${esc(r.cat)}${catNote}</td>
+      <td style="text-align:right;white-space:nowrap;font-weight:600;color:${col}">${sign}${fmt(r.amount)}</td>
+      <td>${isNew?'<span class="badge-new">NEW</span>':'<span class="badge-skip">SKIP</span>'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('import-tbl').innerHTML=`
+    <thead><tr>
+      <th>Date</th><th>Type</th><th>Description</th><th>Category (mapped)</th>
+      <th style="text-align:right">Amount</th><th>Status</th>
+    </tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:2rem;color:#6B6A66">No entries to show.</td></tr>'}</tbody>
+  `;
+  const btn=document.getElementById('import-btn');
+  btn.textContent=`Import ${newR.length} entr${newR.length===1?'y':'ies'}`;
+  btn.disabled=!newR.length;
+  document.getElementById('import-msg').textContent=skipR.length?`${skipR.length} duplicate${skipR.length!==1?'s':''} will be skipped`:'';
+}
+
+function confirmImport(){
+  const newR=_importRows.filter(r=>r.status==='new');
+  if(!newR.length)return;
+  const batch=_db.batch();
+  const uuids=getImportedUUIDs();
+  let id=Date.now();
+  newR.forEach(r=>{
+    const e={id:id++,type:r.type,desc:r.desc,amount:r.amount,date:r.date,cat:r.cat,client:'',notes:'Pennyworth: '+r.pennyCat};
+    batch.set(_db.collection('anna_tracker').doc(String(e.id)),e);
+    uuids.add(r.uuid);
+  });
+  batch.commit().then(()=>{
+    saveImportedUUIDs(uuids);
+    const msg=document.getElementById('import-msg');
+    msg.textContent=`✓ Imported ${newR.length} entr${newR.length===1?'y':'ies'} successfully.`;
+    msg.style.color='#1D9E75';
+    _importRows.forEach(r=>r.status='skip');
+    renderImportPreview();
+    setTimeout(()=>{resetImport();showPage('records');},1500);
+  }).catch(()=>{document.getElementById('import-msg').textContent='Error importing. Check your connection.';});
+}
+
+function resetImport(){
+  _importRows=[];
+  document.getElementById('import-preview').style.display='none';
+  document.getElementById('import-file').value='';
+}
+
+function initImportDrop(){
+  const drop=document.getElementById('import-drop');
+  drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('drag');});
+  drop.addEventListener('dragleave',()=>drop.classList.remove('drag'));
+  drop.addEventListener('drop',e=>{
+    e.preventDefault();drop.classList.remove('drag');
+    const f=e.dataTransfer.files[0];
+    if(f&&f.name.toLowerCase().endsWith('.csv'))handleImportFile(f);
+    else alert('Please drop a .csv file.');
+  });
+}
+initImportDrop();
+</script>
+</body>
+</html>
