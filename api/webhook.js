@@ -11,10 +11,8 @@ if (!admin.apps.length) {
 }
 const db = admin.firestore();
 
-// ── Clients ────────────────────────────────────────────────────────────────────
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-// ── Category lists (must match finance_tracker.html) ──────────────────────────
 const EXPENSE_CATS = [
   'Food & drinks','Transport','Socializing','Entertainment','Beauty & health',
   'Phone & subscriptions','Books & education','Gifts & treats','Travel',
@@ -25,33 +23,29 @@ const INCOME_CATS = [
   'Project fee','Retainer','Sales/Resale','Event','Laisee','Other income',
 ];
 
-// ── Parse natural language with Gemini REST API ───────────────────────────────
+// ── Parse natural language with Gemini ────────────────────────────────────────
 async function parseEntry(text) {
   const today = new Date().toISOString().split('T')[0];
-  const prompt = `You are Anna's finance tracker assistant. Parse this message into a structured expense or income entry.
-Today is ${today} (YYYY-MM-DD).
+  const prompt = `You are Anna's finance tracker assistant. Anna is a freelance creative (photographer/videographer) based in Hong Kong.
+
+Parse this message and return JSON. Be generous — even short messages like "taxi 47" or "oscar 1200" are valid.
 
 Message: "${text}"
+Today: ${today}
 
 Rules:
-- Default to expense unless clearly income (payment received, earned, laisee, sold something)
-- Amount is always in HKD
-- If no date mentioned, use today
-- Pick the best matching category
+- "ambiguous" must be true when you genuinely cannot tell if money was RECEIVED by Anna or PAID by Anna. Example: "oscar 1200" — is Oscar a client who paid Anna, or a friend Anna paid? Mark ambiguous.
+- "ambiguous" is false when the direction is obvious from context: "taxi 47" = expense, "client paid me 2000" = income, "lunch 80" = expense.
+- Default to expense when not ambiguous and no income signals.
+- Income signals: paid me, received, earned, laisee, shooting fee, project, invoice, sold.
+- Amount is HKD. If no date mentioned, use today.
+- If amount is missing or unclear, set amount to 0.
 
 Expense categories: ${EXPENSE_CATS.join(', ')}
 Income categories: ${INCOME_CATS.join(', ')}
 
-Respond with JSON only, no explanation:
-{
-  "type": "expense" or "income",
-  "amount": number,
-  "desc": "short description",
-  "date": "YYYY-MM-DD",
-  "cat": "category from the list above",
-  "client": "client/person name or empty string",
-  "ambiguous": true or false
-}`;
+Return ONLY valid JSON, no explanation, no markdown:
+{"type":"expense","amount":0,"desc":"","date":"${today}","cat":"","client":"","ambiguous":false}`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
@@ -62,11 +56,12 @@ Respond with JSON only, no explanation:
     }
   );
   const data = await res.json();
-  console.log('Gemini status:', res.status, 'data:', JSON.stringify(data).slice(0, 500));
+  console.log('Gemini status:', res.status, JSON.stringify(data).slice(0, 400));
   if (!data.candidates || !data.candidates[0]) {
-    throw new Error('Gemini error: ' + JSON.stringify(data.error || data));
+    throw new Error(JSON.stringify(data.error || 'no candidates'));
   }
-  const raw = data.candidates[0].content.parts[0].text.trim().replace(/^```json\n?|\n?```$/g, '');
+  const raw = data.candidates[0].content.parts[0].text.trim()
+    .replace(/^```json\n?/,'').replace(/\n?```$/,'');
   return JSON.parse(raw);
 }
 
@@ -75,47 +70,61 @@ function fmtHKD(n) {
   return 'HKD ' + Number(n).toLocaleString('en-HK', { maximumFractionDigits: 0 });
 }
 
-async function getMonthSummary(yearMonth) {
-  const snap = await db.collection('anna_tracker').get();
-  const entries = snap.docs.map(d => d.data()).filter(e => e.date && e.date.startsWith(yearMonth));
-  const income = entries.filter(e => e.type === 'income').reduce((s, e) => s + (e.amount || 0), 0);
-  const expense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + (e.amount || 0), 0);
-  return { income, expense, net: income - expense, count: entries.length };
-}
-
-async function getRecentEntries(n = 5) {
-  const snap = await db.collection('anna_tracker').orderBy('date', 'desc').limit(n).get();
-  return snap.docs.map(d => d.data());
-}
-
-// ── Pending confirmations (in-memory, per user) ────────────────────────────────
+// pending[userId] = { stage: 'confirm'|'clarify_type'|'need_amount', entry: {...} }
 const pending = new Map();
 
-// ── Bot commands ───────────────────────────────────────────────────────────────
-bot.command('test', ctx => ctx.reply('Bot is alive! ✓'));
+async function sendConfirmation(ctx, entry, editExisting = false) {
+  const sign = entry.type === 'income' ? '+' : '-';
+  const emoji = entry.type === 'income' ? '💚' : '🔴';
+  const clientLine = entry.client ? `👤 ${entry.client}\n` : '';
+  const switchLabel = entry.type === 'income' ? '↕ Switch to Expense' : '↕ Switch to Income';
 
+  pending.set(ctx.from.id, { stage: 'confirm', entry });
+
+  const text =
+    `${emoji} *${entry.desc}*\n` +
+    `${sign}${fmtHKD(entry.amount)}\n` +
+    `🏷 ${entry.cat}\n` +
+    `📅 ${entry.date}\n` +
+    `${clientLine}\n` +
+    `Does this look right?`;
+
+  const keyboard = Markup.inlineKeyboard([
+    [Markup.button.callback('✓ Yes, log it', 'confirm'), Markup.button.callback('✗ Cancel', 'cancel')],
+    [Markup.button.callback(switchLabel, 'switch_type')],
+  ]);
+
+  if (editExisting) {
+    return ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard });
+  }
+  return ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+}
+
+// ── Commands ───────────────────────────────────────────────────────────────────
 bot.start(ctx =>
   ctx.reply(
-    `Hi Anna! 👋 I'm your finance tracker bot.\n\n` +
-    `Just tell me what you spent or earned:\n` +
-    `• "taxi 47 to cbeauty"\n` +
-    `• "lunch 62 matchali"\n` +
-    `• "momo shooting 1200"\n\n` +
-    `Commands:\n` +
-    `/summary — this month's overview\n` +
-    `/recent — last 5 entries\n` +
-    `/help — show this message`
+    `Hi Anna! 👋 I'm your finance bot.\n\n` +
+    `Just tell me what happened — I'll figure out the details and ask if anything's unclear.\n\n` +
+    `Examples:\n` +
+    `• "taxi 47"\n` +
+    `• "lunch 120 with oscar"\n` +
+    `• "oscar paid me 1200 for shooting"\n` +
+    `• "received 500 laisee"\n\n` +
+    `/summary — this month\n` +
+    `/recent — last 5 entries`
   )
 );
 
 bot.help(ctx =>
   ctx.reply(
-    `Send any expense or income in plain text and I'll log it.\n\n` +
-    `Examples:\n` +
-    `• "uber 85 from home"\n` +
-    `• "dinner 320 with friends"\n` +
-    `• "ck work 2 days 1200"\n` +
-    `• "sold lkh poster 300"\n\n` +
+    `Just describe what you spent or earned — I'll ask if anything's unclear.\n\n` +
+    `For income, mention payment direction:\n` +
+    `• "oscar paid me 3000 shooting"\n` +
+    `• "client settled invoice 5000"\n` +
+    `• "received laisee 200"\n\n` +
+    `For expenses, just say what it was:\n` +
+    `• "taxi 80"\n` +
+    `• "dinner 320 cbeauty"\n\n` +
     `/summary — monthly overview\n` +
     `/recent — last 5 entries`
   )
@@ -126,24 +135,28 @@ bot.command('summary', async ctx => {
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const label = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
   try {
-    const { income, expense, net, count } = await getMonthSummary(ym);
-    const sign = net >= 0 ? '+' : '';
+    const snap = await db.collection('anna_tracker').get();
+    const entries = snap.docs.map(d => d.data()).filter(e => e.date && e.date.startsWith(ym));
+    const income = entries.filter(e => e.type === 'income').reduce((s, e) => s + (e.amount || 0), 0);
+    const expense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + (e.amount || 0), 0);
+    const net = income - expense;
     ctx.reply(
-      `📊 *${label}* (${count} entries)\n\n` +
-      `💚 Income: ${fmtHKD(income)}\n` +
+      `📊 *${label}* (${entries.length} entries)\n\n` +
+      `💚 Income:   ${fmtHKD(income)}\n` +
       `🔴 Expenses: ${fmtHKD(expense)}\n` +
       `━━━━━━━━━━━━\n` +
-      `${net >= 0 ? '💰' : '⚠️'} Net: ${sign}${fmtHKD(net)}`,
+      `${net >= 0 ? '💰' : '⚠️'} Net: ${net >= 0 ? '+' : ''}${fmtHKD(net)}`,
       { parse_mode: 'Markdown' }
     );
   } catch (e) {
-    ctx.reply('Could not fetch summary. Try again in a moment.');
+    ctx.reply('Could not fetch summary right now. Try again in a moment.');
   }
 });
 
 bot.command('recent', async ctx => {
   try {
-    const entries = await getRecentEntries(5);
+    const snap = await db.collection('anna_tracker').orderBy('date', 'desc').limit(5).get();
+    const entries = snap.docs.map(d => d.data());
     if (!entries.length) return ctx.reply('No entries yet.');
     const lines = entries.map(e => {
       const sign = e.type === 'income' ? '💚 +' : '🔴 -';
@@ -151,51 +164,101 @@ bot.command('recent', async ctx => {
     });
     ctx.reply(`*Last 5 entries:*\n\n${lines.join('\n')}`, { parse_mode: 'Markdown' });
   } catch (e) {
-    ctx.reply('Could not fetch entries. Try again in a moment.');
+    ctx.reply('Could not fetch entries right now. Try again in a moment.');
   }
 });
 
-// ── Main message handler ───────────────────────────────────────────────────────
+// ── Main text handler ──────────────────────────────────────────────────────────
 bot.on('text', async ctx => {
   const text = ctx.message.text.trim();
-  if (text.startsWith('/')) return; // ignore unknown commands
+  if (text.startsWith('/')) return;
+
+  // Handle "need amount" follow-up
+  const state = pending.get(ctx.from.id);
+  if (state && state.stage === 'need_amount') {
+    const amount = parseFloat(text.replace(/[^0-9.]/g, ''));
+    if (!amount || isNaN(amount)) {
+      await ctx.reply('Just the number please — e.g. "350"');
+      return;
+    }
+    state.entry.amount = amount;
+    await sendConfirmation(ctx, state.entry);
+    return;
+  }
 
   ctx.sendChatAction('typing');
+
+  let entry;
   try {
-    const entry = await parseEntry(text);
-    const sign = entry.type === 'income' ? '+' : '-';
-    const emoji = entry.type === 'income' ? '💚' : '🔴';
-    const clientLine = entry.client ? `👤 ${entry.client}\n` : '';
-
-    pending.set(ctx.from.id, entry);
-
-    await ctx.reply(
-      `${emoji} *${entry.desc}*\n` +
-      `${sign}${fmtHKD(entry.amount)}\n` +
-      `🏷 ${entry.cat}\n` +
-      `📅 ${entry.date}\n` +
-      `${clientLine}\n` +
-      `Log this entry?`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [
-            Markup.button.callback('✓ Yes, log it', 'confirm'),
-            Markup.button.callback('✗ Cancel', 'cancel'),
-          ],
-        ]),
-      }
-    );
+    entry = await parseEntry(text);
   } catch (err) {
     console.error('parseEntry error:', err);
-    ctx.reply(`Hmm, I couldn't parse that (${err.message}). Try: "taxi 47 to cbeauty" or "momo shooting 1200"`);
+    await ctx.reply(
+      `I didn't quite catch that. Can you rephrase?\n\n` +
+      `Try: "taxi 47", "lunch 120 with oscar", or "oscar paid me 1200 for shooting"`
+    );
+    return;
   }
+
+  // Amount missing — ask
+  if (!entry.amount || entry.amount === 0) {
+    pending.set(ctx.from.id, { stage: 'need_amount', entry });
+    const what = entry.desc || text;
+    await ctx.reply(`Got "${what}" — how much was it? (HKD)`);
+    return;
+  }
+
+  // Income vs expense unclear — ask
+  if (entry.ambiguous) {
+    pending.set(ctx.from.id, { stage: 'clarify_type', entry });
+    const who = entry.client || entry.desc;
+    await ctx.reply(
+      `${who} — ${fmtHKD(entry.amount)}\n\nWas this money you received, or money you paid?`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('💚 I received it', 'type_income')],
+        [Markup.button.callback('🔴 I paid it', 'type_expense')],
+        [Markup.button.callback('✗ Cancel', 'cancel')],
+      ])
+    );
+    return;
+  }
+
+  await sendConfirmation(ctx, entry);
+});
+
+// ── Button actions ─────────────────────────────────────────────────────────────
+bot.action('type_income', async ctx => {
+  await ctx.answerCbQuery();
+  const state = pending.get(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  state.entry.type = 'income';
+  if (!INCOME_CATS.includes(state.entry.cat)) state.entry.cat = 'Other income';
+  await sendConfirmation(ctx, state.entry, true);
+});
+
+bot.action('type_expense', async ctx => {
+  await ctx.answerCbQuery();
+  const state = pending.get(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  state.entry.type = 'expense';
+  if (!EXPENSE_CATS.includes(state.entry.cat)) state.entry.cat = 'Misc';
+  await sendConfirmation(ctx, state.entry, true);
+});
+
+bot.action('switch_type', async ctx => {
+  await ctx.answerCbQuery();
+  const state = pending.get(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  state.entry.type = state.entry.type === 'income' ? 'expense' : 'income';
+  if (state.entry.type === 'income' && !INCOME_CATS.includes(state.entry.cat)) state.entry.cat = 'Other income';
+  if (state.entry.type === 'expense' && !EXPENSE_CATS.includes(state.entry.cat)) state.entry.cat = 'Misc';
+  await sendConfirmation(ctx, state.entry, true);
 });
 
 bot.action('confirm', async ctx => {
-  const entry = pending.get(ctx.from.id);
+  const state = pending.get(ctx.from.id);
+  const entry = state && state.entry;
   if (!entry) return ctx.answerCbQuery('Entry expired — please re-send your message.');
-
   try {
     const id = Date.now();
     await db.collection('anna_tracker').doc(String(id)).set({
@@ -216,17 +279,18 @@ bot.action('confirm', async ctx => {
     );
     ctx.answerCbQuery('Saved!');
   } catch (err) {
-    ctx.answerCbQuery('Error saving. Try again.');
+    console.error('save error:', err);
+    ctx.answerCbQuery('Error saving — try again.');
   }
 });
 
 bot.action('cancel', async ctx => {
   pending.delete(ctx.from.id);
-  await ctx.editMessageText('❌ Cancelled.');
+  await ctx.editMessageText('Cancelled.');
   ctx.answerCbQuery();
 });
 
-// ── Vercel serverless export ───────────────────────────────────────────────────
+// ── Vercel export ──────────────────────────────────────────────────────────────
 module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
