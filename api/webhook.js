@@ -117,7 +117,39 @@ function fmtHKD(n) {
   return 'HKD ' + Number(n).toLocaleString('en-HK', { maximumFractionDigits: 0 });
 }
 
-// pending[userId] = { stage: 'confirm'|'clarify_type'|'need_amount', entry: {...} }
+// Short code → full category name
+const CAT_MAP = {
+  c_food: 'Food & drinks', c_trans: 'Transport', c_social: 'Socializing',
+  c_ent: 'Entertainment', c_health: 'Beauty & health', c_phone: 'Phone & subscriptions',
+  c_edu: 'Books & education', c_gifts: 'Gifts & treats', c_travel: 'Travel',
+  c_shop: 'Shopping', c_music: 'Music & media', c_leisure: 'Leisure',
+  c_util: 'Utilities', c_fees: 'Fees', c_family: 'Family', c_misc: 'Misc',
+  c_shoot: 'Shooting', c_video: 'Video editing', c_design: 'Graphic design',
+  c_copy: 'Writing/Caption', c_rate: 'Freelance day rate', c_proj: 'Project fee',
+  c_ret: 'Retainer', c_resale: 'Sales/Resale', c_event: 'Event',
+  c_lai: 'Laisee', c_otherinc: 'Other income',
+};
+
+const EXPENSE_CAT_BTNS = [
+  ['🍜 Food', 'c_food'], ['🚖 Transport', 'c_trans'],
+  ['🍻 Socializing', 'c_social'], ['🎬 Entertainment', 'c_ent'],
+  ['💄 Beauty & health', 'c_health'], ['📱 Phone & subs', 'c_phone'],
+  ['📚 Education', 'c_edu'], ['🎁 Gifts & treats', 'c_gifts'],
+  ['✈️ Travel', 'c_travel'], ['🛍 Shopping', 'c_shop'],
+  ['🎵 Music & media', 'c_music'], ['🏋️ Leisure', 'c_leisure'],
+  ['🔧 Utilities', 'c_util'], ['💸 Fees', 'c_fees'],
+  ['👨‍👩‍👧 Family', 'c_family'], ['📦 Misc', 'c_misc'],
+];
+const INCOME_CAT_BTNS = [
+  ['📷 Shooting', 'c_shoot'], ['🎞 Video editing', 'c_video'],
+  ['🎨 Graphic design', 'c_design'], ['✍️ Writing/Caption', 'c_copy'],
+  ['📆 Day rate', 'c_rate'], ['💼 Project fee', 'c_proj'],
+  ['🔁 Retainer', 'c_ret'], ['🏷 Sales/Resale', 'c_resale'],
+  ['🎪 Event', 'c_event'], ['🧧 Laisee', 'c_lai'],
+  ['💰 Other income', 'c_otherinc'],
+];
+
+// pending[userId] = { stage, entry, msgId? }
 const pending = new Map();
 
 async function sendConfirmation(ctx, entry, editExisting = false) {
@@ -125,6 +157,7 @@ async function sendConfirmation(ctx, entry, editExisting = false) {
   const emoji = entry.type === 'income' ? '💚' : '🔴';
   const clientLine = entry.client ? `👤 ${entry.client}\n` : '';
   const switchLabel = entry.type === 'income' ? '↕ Switch to Expense' : '↕ Switch to Income';
+  const clientBtn = entry.client ? '👤 Edit client' : '👤 Add client';
 
   pending.set(ctx.from.id, { stage: 'confirm', entry });
 
@@ -137,7 +170,8 @@ async function sendConfirmation(ctx, entry, editExisting = false) {
     `Does this look right?`;
 
   const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('✓ Yes, log it', 'confirm'), Markup.button.callback('✗ Cancel', 'cancel')],
+    [Markup.button.callback('✓ Log it', 'confirm'), Markup.button.callback('✗ Cancel', 'cancel')],
+    [Markup.button.callback('✏️ Category', 'pick_cat'), Markup.button.callback(clientBtn, 'edit_client')],
     [Markup.button.callback(switchLabel, 'switch_type')],
   ]);
 
@@ -145,6 +179,18 @@ async function sendConfirmation(ctx, entry, editExisting = false) {
     return ctx.editMessageText(text, { parse_mode: 'Markdown', ...keyboard });
   }
   return ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
+}
+
+function catPickerKeyboard(type) {
+  const btns = type === 'income' ? INCOME_CAT_BTNS : EXPENSE_CAT_BTNS;
+  const rows = [];
+  for (let i = 0; i < btns.length; i += 2) {
+    const row = [Markup.button.callback(btns[i][0], btns[i][1])];
+    if (btns[i + 1]) row.push(Markup.button.callback(btns[i + 1][0], btns[i + 1][1]));
+    rows.push(row);
+  }
+  rows.push([Markup.button.callback('← Back', 'back_to_confirm')]);
+  return Markup.inlineKeyboard(rows);
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────────
@@ -220,7 +266,7 @@ bot.on('text', async ctx => {
   const text = ctx.message.text.trim();
   if (text.startsWith('/')) return;
 
-  // Handle "need amount" follow-up
+  // Handle staged follow-ups
   const state = pending.get(ctx.from.id);
   if (state && state.stage === 'need_amount') {
     const amount = parseFloat(text.replace(/[^0-9.]/g, ''));
@@ -229,6 +275,13 @@ bot.on('text', async ctx => {
       return;
     }
     state.entry.amount = amount;
+    await sendConfirmation(ctx, state.entry);
+    return;
+  }
+  if (state && state.stage === 'edit_client') {
+    state.entry.client = text.trim().toLowerCase() === 'none' ? '' : text.trim();
+    const msg = state.entry.client ? `Got it — client set to *${state.entry.client}*` : 'Client cleared.';
+    await ctx.reply(msg, { parse_mode: 'Markdown' });
     await sendConfirmation(ctx, state.entry);
     return;
   }
@@ -326,6 +379,46 @@ bot.action('confirm', async ctx => {
     console.error('save error:', err);
     ctx.answerCbQuery('Error saving — try again.');
   }
+});
+
+bot.action('pick_cat', async ctx => {
+  await ctx.answerCbQuery();
+  const state = pending.get(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  pending.set(ctx.from.id, { ...state, stage: 'pick_cat' });
+  await ctx.editMessageText(
+    `Pick a category for *${state.entry.desc}*:`,
+    { parse_mode: 'Markdown', ...catPickerKeyboard(state.entry.type) }
+  );
+});
+
+bot.action('back_to_confirm', async ctx => {
+  await ctx.answerCbQuery();
+  const state = pending.get(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await sendConfirmation(ctx, state.entry, true);
+});
+
+bot.action('edit_client', async ctx => {
+  await ctx.answerCbQuery();
+  const state = pending.get(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  pending.set(ctx.from.id, { ...state, stage: 'edit_client' });
+  const prompt = state.entry.client
+    ? `Current client: *${state.entry.client}*\n\nType the new name (or type "none" to clear):`
+    : `Who's the client or person involved? Just type their name:`;
+  await ctx.reply(prompt, { parse_mode: 'Markdown' });
+});
+
+// Category picker actions — one handler for all cat codes
+Object.keys(CAT_MAP).forEach(code => {
+  bot.action(code, async ctx => {
+    await ctx.answerCbQuery();
+    const state = pending.get(ctx.from.id);
+    if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+    state.entry.cat = CAT_MAP[code];
+    await sendConfirmation(ctx, state.entry, true);
+  });
 });
 
 bot.action('cancel', async ctx => {
