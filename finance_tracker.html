@@ -404,6 +404,7 @@ function initApp(){
   }
   _statusEl.textContent='Connecting…';
   _db=firebase.firestore();
+  _db.settings({experimentalForceLongPolling:true,merge:true});
   _db.enableIndexedDbPersistence().catch(()=>{});
   _db.collection('anna_tracker').onSnapshot(snap=>{
     if(snap.empty&&!_seeded){_seeded=true;_seedFirestore();return;}
