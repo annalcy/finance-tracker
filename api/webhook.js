@@ -174,11 +174,8 @@ bot.on('text', async ctx => {
       }
     );
   } catch (err) {
-    ctx.reply(
-      `Sorry, I couldn't understand that.\n` +
-      `Try: "taxi 47 to cbeauty" or "lunch 62 matchali"\n` +
-      `Or: "momo shooting 1200"`
-    );
+    console.error('parseEntry error:', err);
+    ctx.reply(`Debug error: ${err.message}`);
   }
 });
 
