@@ -48,7 +48,7 @@ Return ONLY valid JSON, no explanation, no markdown:
 {"type":"expense","amount":0,"desc":"","date":"${today}","cat":"","client":"","ambiguous":false}`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -56,13 +56,15 @@ Return ONLY valid JSON, no explanation, no markdown:
     }
   );
   const data = await res.json();
-  console.log('Gemini status:', res.status, JSON.stringify(data).slice(0, 400));
   if (!data.candidates || !data.candidates[0]) {
-    throw new Error(JSON.stringify(data.error || 'no candidates'));
+    throw new Error('Gemini API error: ' + JSON.stringify(data.error || data));
   }
-  const raw = data.candidates[0].content.parts[0].text.trim()
-    .replace(/^```json\n?/,'').replace(/\n?```$/,'');
-  return JSON.parse(raw);
+  const responseText = data.candidates[0].content.parts[0].text;
+  // Robustly extract JSON from anywhere in the response
+  const start = responseText.indexOf('{');
+  const end = responseText.lastIndexOf('}');
+  if (start === -1 || end === -1) throw new Error('No JSON in Gemini response: ' + responseText.slice(0, 100));
+  return JSON.parse(responseText.slice(start, end + 1));
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -192,8 +194,11 @@ bot.on('text', async ctx => {
   try {
     entry = await parseEntry(text);
   } catch (err) {
-    console.error('parseEntry error:', err);
-    await ctx.reply(`DEBUG: ${err.message}`);
+    console.error('parseEntry error:', err.message);
+    await ctx.reply(
+      `I didn't quite catch that. Can you rephrase?\n\n` +
+      `Try: "taxi 47", "lunch 120 with oscar", or "oscar paid me 1200 for shooting"`
+    );
     return;
   }
 
