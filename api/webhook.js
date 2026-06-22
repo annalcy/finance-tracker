@@ -88,6 +88,8 @@ async function getRecentEntries(n = 5) {
 const pending = new Map();
 
 // ── Bot commands ───────────────────────────────────────────────────────────────
+bot.command('test', ctx => ctx.reply('Bot is alive! ✓'));
+
 bot.start(ctx =>
   ctx.reply(
     `Hi Anna! 👋 I'm your finance tracker bot.\n\n` +
