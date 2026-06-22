@@ -47,23 +47,26 @@ Income categories: ${INCOME_CATS.join(', ')}
 Return ONLY valid JSON, no explanation, no markdown:
 {"type":"expense","amount":0,"desc":"","date":"${today}","cat":"","client":"","ambiguous":false}`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    }
-  );
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+    }),
+  });
   const data = await res.json();
-  if (!data.candidates || !data.candidates[0]) {
-    throw new Error('Gemini API error: ' + JSON.stringify(data.error || data));
+  if (!data.choices || !data.choices[0]) {
+    throw new Error('Groq API error: ' + JSON.stringify(data.error || data));
   }
-  const responseText = data.candidates[0].content.parts[0].text;
-  // Robustly extract JSON from anywhere in the response
+  const responseText = data.choices[0].message.content;
   const start = responseText.indexOf('{');
   const end = responseText.lastIndexOf('}');
-  if (start === -1 || end === -1) throw new Error('No JSON in Gemini response: ' + responseText.slice(0, 100));
+  if (start === -1 || end === -1) throw new Error('No JSON in response: ' + responseText.slice(0, 100));
   return JSON.parse(responseText.slice(start, end + 1));
 }
 
