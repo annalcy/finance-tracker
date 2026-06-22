@@ -380,18 +380,31 @@ function renderCurrent(){
   if(_currentPage==='reports')renderReports();
 }
 function initApp(){
+  const _statusEl=document.createElement('div');
+  _statusEl.style.cssText='position:fixed;bottom:16px;right:16px;background:#333;color:#fff;font-size:12px;padding:6px 14px;border-radius:20px;z-index:9999;';
+  _statusEl.textContent='Loading…';
+  document.body.appendChild(_statusEl);
+
   if(FIREBASE_CONFIG.apiKey==='REPLACE_ME'){
-    document.querySelector('.app').innerHTML='<div style="padding:3rem;text-align:center"><p style="font-size:15px;font-weight:600;color:#D85A30">Firebase not configured yet</p><p style="font-size:13px;color:#6B6A66;margin-top:8px">Open this file and fill in your FIREBASE_CONFIG values. See the setup guide for instructions.</p></div>';
+    _statusEl.textContent='Firebase not configured';
+    _statusEl.style.background='#D85A30';
     return;
   }
-  firebase.initializeApp(FIREBASE_CONFIG);
+  if(typeof firebase==='undefined'){
+    _statusEl.textContent='Firebase SDK failed to load — check internet';
+    _statusEl.style.background='#D85A30';
+    return;
+  }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+  }catch(e){
+    _statusEl.textContent='Init error: '+e.message;
+    _statusEl.style.background='#D85A30';
+    return;
+  }
+  _statusEl.textContent='Connecting…';
   _db=firebase.firestore();
   _db.enableIndexedDbPersistence().catch(()=>{});
-  const _statusEl=document.createElement('div');
-  _statusEl.id='sync-status';
-  _statusEl.style.cssText='position:fixed;bottom:16px;right:16px;background:#333;color:#fff;font-size:12px;padding:6px 12px;border-radius:20px;z-index:999;';
-  _statusEl.textContent='Connecting…';
-  document.body.appendChild(_statusEl);
   _db.collection('anna_tracker').onSnapshot(snap=>{
     if(snap.empty&&!_seeded){_seeded=true;_seedFirestore();return;}
     _entries=snap.docs.map(d=>d.data());
@@ -401,7 +414,7 @@ function initApp(){
     setTimeout(()=>_statusEl.remove(),3000);
     renderCurrent();
   },err=>{
-    _statusEl.textContent='Sync error: '+err.code;
+    _statusEl.textContent='DB error: '+err.code;
     _statusEl.style.background='#D85A30';
   });
   _db.collection('anna_meta').doc('imported_uuids').onSnapshot(snap=>{
