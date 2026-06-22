@@ -178,25 +178,15 @@
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-// ── Firebase config — paste your project values here ─────────────────────────
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDmJJ63YafEW4X3EWb9RajZqra2Z3dF2V8",
-  authDomain: "anna-finance-tracker.firebaseapp.com",
-  projectId: "anna-finance-tracker",
-  storageBucket: "anna-finance-tracker.firebasestorage.app",
-  messagingSenderId: "728929553505",
-  appId: "1:728929553505:web:7fc3cf9e47dbd671acae20"
-};
+const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Socializing','Transport','Entertainment','Music & media','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null;
-let _db=null, _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _seeded=false;
+let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -367,60 +357,41 @@ const SEED_DATA = [
 ];
 
 function getEntries(){return _entries;}
-function _writeEntry(e){return _db.collection('anna_tracker').doc(String(e.id)).set(e);}
-function _deleteDoc(id){return _db.collection('anna_tracker').doc(String(id)).delete();}
-function _seedFirestore(){
-  const b=_db.batch();
-  SEED_DATA.forEach(e=>b.set(_db.collection('anna_tracker').doc(String(e.id)),e));
-  return b.commit();
+async function _writeEntry(e){
+  await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)});
+}
+async function _deleteDoc(id){
+  await fetch(API+'?id='+id,{method:'DELETE'});
 }
 function renderCurrent(){
   if(_currentPage==='overview')renderOverview();
   if(_currentPage==='records'){populateRecordFilters(_entries);renderRecords();}
   if(_currentPage==='reports')renderReports();
 }
-function initApp(){
-  const _statusEl=document.createElement('div');
-  _statusEl.style.cssText='position:fixed;bottom:16px;right:16px;background:#333;color:#fff;font-size:12px;padding:6px 14px;border-radius:20px;z-index:9999;';
-  _statusEl.textContent='Loading…';
-  document.body.appendChild(_statusEl);
-
-  if(FIREBASE_CONFIG.apiKey==='REPLACE_ME'){
-    _statusEl.textContent='Firebase not configured';
-    _statusEl.style.background='#D85A30';
-    return;
-  }
-  if(typeof firebase==='undefined'){
-    _statusEl.textContent='Firebase SDK failed to load — check internet';
-    _statusEl.style.background='#D85A30';
-    return;
-  }
+async function loadEntries(){
+  const el=document.getElementById('sync-pill');
   try{
-    firebase.initializeApp(FIREBASE_CONFIG);
-  }catch(e){
-    _statusEl.textContent='Init error: '+e.message;
-    _statusEl.style.background='#D85A30';
-    return;
-  }
-  _statusEl.textContent='Connecting…';
-  _db=firebase.firestore();
-  _db.settings({experimentalForceLongPolling:true,merge:true});
-  _db.enableIndexedDbPersistence().catch(()=>{});
-  _db.collection('anna_tracker').onSnapshot(snap=>{
-    if(snap.empty&&!_seeded){_seeded=true;_seedFirestore();return;}
-    _entries=snap.docs.map(d=>d.data());
+    const res=await fetch(API);
+    const data=await res.json();
+    _entries=Array.isArray(data)?data:[];
     _entries.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
-    _statusEl.textContent=`Synced — ${_entries.length} entries`;
-    _statusEl.style.background='#1D9E75';
-    setTimeout(()=>_statusEl.remove(),3000);
+    el.textContent=`Synced — ${_entries.length} entries`;
+    el.style.background='#1D9E75';
+    setTimeout(()=>{el.style.opacity='0';},2000);
     renderCurrent();
-  },err=>{
-    _statusEl.textContent='DB error: '+err.code;
-    _statusEl.style.background='#D85A30';
-  });
-  _db.collection('anna_meta').doc('imported_uuids').onSnapshot(snap=>{
-    if(snap.exists)_importedUUIDs=new Set(snap.data().uuids||[]);
-  });
+  }catch(e){
+    el.textContent='Could not load data';
+    el.style.background='#D85A30';
+  }
+}
+function initApp(){
+  const el=document.createElement('div');
+  el.id='sync-pill';
+  el.style.cssText='position:fixed;bottom:16px;right:16px;background:#555;color:#fff;font-size:12px;padding:6px 14px;border-radius:20px;z-index:9999;transition:opacity 1s;';
+  el.textContent='Loading…';
+  document.body.appendChild(el);
+  loadEntries();
+  setInterval(loadEntries,30000);
 }
 function fmt(n){return '$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});}
 function today(){return new Date().toISOString().split('T')[0];}
@@ -439,11 +410,11 @@ function addEntry(){
   const notes=document.getElementById('f-notes').value.trim();
   if(!desc||!amount||!date){showMsg('Fill in description, amount and date','#D85A30');return;}
   const entry={id:Date.now(),type:currentType,desc,amount,date,cat,client,notes};
-  _writeEntry(entry).then(()=>{showMsg('Saved!','#1D9E75');clearForm();}).catch(()=>showMsg('Error saving — check connection','#D85A30'));
+  _writeEntry(entry).then(()=>{showMsg('Saved!','#1D9E75');clearForm();loadEntries();}).catch(()=>showMsg('Error saving — check connection','#D85A30'));
 }
 function showMsg(m,c){const el=document.getElementById('add-msg');el.textContent=m;el.style.color=c;setTimeout(()=>el.textContent='',3000);}
 function clearForm(){['f-desc','f-amount','f-client','f-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-date').value=today();}
-function deleteEntry(id){_deleteDoc(id).catch(console.error);}
+function deleteEntry(id){_deleteDoc(id).then(()=>loadEntries()).catch(console.error);}
 
 function entryHTML(e){
   const isIn=e.type==='income';
@@ -560,7 +531,7 @@ const PCAT_MAP = {
 function mapPCat(cat,type){return PCAT_MAP[cat]||(type==='income'?'Other income':'Misc');}
 function pennydateToISO(d){return`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`;}
 function getImportedUUIDs(){return _importedUUIDs;}
-function saveImportedUUIDs(s){_db.collection('anna_meta').doc('imported_uuids').set({uuids:[...s]});}
+function saveImportedUUIDs(s){_importedUUIDs=s;}
 
 let _importRows=[], _importFilter='all';
 
@@ -661,16 +632,16 @@ function renderImportPreview(){
 function confirmImport(){
   const newR=_importRows.filter(r=>r.status==='new');
   if(!newR.length)return;
-  const batch=_db.batch();
   const uuids=getImportedUUIDs();
   let id=Date.now();
-  newR.forEach(r=>{
+  const promises=newR.map(r=>{
     const e={id:id++,type:r.type,desc:r.desc,amount:r.amount,date:r.date,cat:r.cat,client:'',notes:'Pennyworth: '+r.pennyCat};
-    batch.set(_db.collection('anna_tracker').doc(String(e.id)),e);
     uuids.add(r.uuid);
+    return _writeEntry(e);
   });
-  batch.commit().then(()=>{
+  Promise.all(promises).then(()=>{
     saveImportedUUIDs(uuids);
+    loadEntries();
     const msg=document.getElementById('import-msg');
     msg.textContent=`✓ Imported ${newR.length} entr${newR.length===1?'y':'ies'} successfully.`;
     msg.style.color='#1D9E75';
