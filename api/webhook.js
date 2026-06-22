@@ -30,7 +30,7 @@ const INCOME_CATS = [
 // ── Parse natural language with Gemini ────────────────────────────────────────
 async function parseEntry(text) {
   const today = new Date().toISOString().split('T')[0];
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   const prompt = `You are Anna's finance tracker assistant. Parse this message into a structured expense or income entry.
 Today is ${today} (YYYY-MM-DD).
 
