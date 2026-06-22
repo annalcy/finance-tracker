@@ -28,11 +28,9 @@ function parseEntry(text) {
   const lower = text.toLowerCase();
   const today = new Date().toISOString().split('T')[0];
 
-  // Extract amount — first number in the message
   const amountMatch = text.match(/\d+(\.\d+)?/);
   const amount = amountMatch ? parseFloat(amountMatch[0]) : 0;
 
-  // Income signals
   const incomeSignals = [
     'paid me', 'pay me', 'payment to me', 'received from', 'received',
     'laisee', 'lai see', 'red packet', 'invoice paid', 'settled invoice',
@@ -40,7 +38,6 @@ function parseEntry(text) {
   ];
   const isIncome = incomeSignals.some(s => lower.includes(s));
 
-  // Clear expense signals (never ambiguous)
   const clearExpense = [
     'taxi','uber','grab','mtr','bus','tram','train','ferry','minibus',
     'lunch','dinner','breakfast','brunch','food','eat','restaurant','cafe',
@@ -58,12 +55,10 @@ function parseEntry(text) {
   ];
   const isClearExpense = clearExpense.some(s => lower.includes(s));
 
-  // Ambiguous: a person name + amount but no clear direction signal
   const words = text.trim().split(/\s+/);
   const hasNameWord = words.some((w, i) => i > 0 && /^[A-Z][a-zA-Z]+$/.test(w));
   const ambiguous = !isIncome && !isClearExpense && hasNameWord && amount > 0;
 
-  // Determine category
   let cat;
   if (isIncome) {
     if (/shoot|shooting|photo/.test(lower)) cat = 'Shooting';
@@ -95,10 +90,7 @@ function parseEntry(text) {
     else cat = 'Misc';
   }
 
-  // Clean description — strip the amount from the text
   const desc = text.replace(/\d+(\.\d+)?/, '').replace(/\s+/g, ' ').trim() || text;
-
-  // Extract client name — capitalised word after the first word
   const clientWord = words.find((w, i) => i > 0 && /^[A-Z][a-zA-Z]+$/.test(w)) || '';
 
   return {
@@ -149,17 +141,28 @@ const INCOME_CAT_BTNS = [
   ['💰 Other income', 'c_otherinc'],
 ];
 
-// pending[userId] = { stage, entry, msgId? }
-const pending = new Map();
+// ── Firestore-backed session (survives serverless cold starts) ─────────────────
+async function getSession(userId) {
+  const doc = await db.collection('anna_sessions').doc(String(userId)).get();
+  return doc.exists ? doc.data() : null;
+}
+async function setSession(userId, data) {
+  await db.collection('anna_sessions').doc(String(userId)).set(data);
+}
+async function clearSession(userId) {
+  await db.collection('anna_sessions').doc(String(userId)).delete();
+}
 
+// ── UI helpers ─────────────────────────────────────────────────────────────────
 async function sendConfirmation(ctx, entry, editExisting = false) {
+  const userId = ctx.from.id;
   const sign = entry.type === 'income' ? '+' : '-';
   const emoji = entry.type === 'income' ? '💚' : '🔴';
   const clientLine = entry.client ? `👤 ${entry.client}\n` : '';
   const switchLabel = entry.type === 'income' ? '↕ Switch to Expense' : '↕ Switch to Income';
   const clientBtn = entry.client ? '👤 Edit client' : '👤 Add client';
 
-  pending.set(ctx.from.id, { stage: 'confirm', entry });
+  await setSession(userId, { stage: 'confirm', entry });
 
   const text =
     `${emoji} *${entry.desc}*\n` +
@@ -266,8 +269,9 @@ bot.on('text', async ctx => {
   const text = ctx.message.text.trim();
   if (text.startsWith('/')) return;
 
-  // Handle staged follow-ups
-  const state = pending.get(ctx.from.id);
+  const userId = ctx.from.id;
+  const state = await getSession(userId);
+
   if (state && state.stage === 'need_amount') {
     const amount = parseFloat(text.replace(/[^0-9.]/g, ''));
     if (!amount || isNaN(amount)) {
@@ -278,9 +282,12 @@ bot.on('text', async ctx => {
     await sendConfirmation(ctx, state.entry);
     return;
   }
+
   if (state && state.stage === 'edit_client') {
     state.entry.client = text.trim().toLowerCase() === 'none' ? '' : text.trim();
-    const msg = state.entry.client ? `Got it — client set to *${state.entry.client}*` : 'Client cleared.';
+    const msg = state.entry.client
+      ? `Got it — client set to *${state.entry.client}*`
+      : 'Client cleared.';
     await ctx.reply(msg, { parse_mode: 'Markdown' });
     await sendConfirmation(ctx, state.entry);
     return;
@@ -297,17 +304,15 @@ bot.on('text', async ctx => {
     return;
   }
 
-  // Amount missing — ask
   if (!entry.amount || entry.amount === 0) {
-    pending.set(ctx.from.id, { stage: 'need_amount', entry });
+    await setSession(userId, { stage: 'need_amount', entry });
     const what = entry.desc || text;
     await ctx.reply(`Got "${what}" — how much was it? (HKD)`);
     return;
   }
 
-  // Income vs expense unclear — ask
   if (entry.ambiguous) {
-    pending.set(ctx.from.id, { stage: 'clarify_type', entry });
+    await setSession(userId, { stage: 'clarify_type', entry });
     const who = entry.client || entry.desc;
     await ctx.reply(
       `${who} — ${fmtHKD(entry.amount)}\n\nWas this money you received, or money you paid?`,
@@ -326,7 +331,7 @@ bot.on('text', async ctx => {
 // ── Button actions ─────────────────────────────────────────────────────────────
 bot.action('type_income', async ctx => {
   await ctx.answerCbQuery();
-  const state = pending.get(ctx.from.id);
+  const state = await getSession(ctx.from.id);
   if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
   state.entry.type = 'income';
   if (!INCOME_CATS.includes(state.entry.cat)) state.entry.cat = 'Other income';
@@ -335,7 +340,7 @@ bot.action('type_income', async ctx => {
 
 bot.action('type_expense', async ctx => {
   await ctx.answerCbQuery();
-  const state = pending.get(ctx.from.id);
+  const state = await getSession(ctx.from.id);
   if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
   state.entry.type = 'expense';
   if (!EXPENSE_CATS.includes(state.entry.cat)) state.entry.cat = 'Misc';
@@ -344,7 +349,7 @@ bot.action('type_expense', async ctx => {
 
 bot.action('switch_type', async ctx => {
   await ctx.answerCbQuery();
-  const state = pending.get(ctx.from.id);
+  const state = await getSession(ctx.from.id);
   if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
   state.entry.type = state.entry.type === 'income' ? 'expense' : 'income';
   if (state.entry.type === 'income' && !INCOME_CATS.includes(state.entry.cat)) state.entry.cat = 'Other income';
@@ -352,8 +357,48 @@ bot.action('switch_type', async ctx => {
   await sendConfirmation(ctx, state.entry, true);
 });
 
+bot.action('pick_cat', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await setSession(ctx.from.id, { ...state, stage: 'pick_cat' });
+  await ctx.editMessageText(
+    `Pick a category for *${state.entry.desc}*:`,
+    { parse_mode: 'Markdown', ...catPickerKeyboard(state.entry.type) }
+  );
+});
+
+bot.action('back_to_confirm', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await sendConfirmation(ctx, state.entry, true);
+});
+
+bot.action('edit_client', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await setSession(ctx.from.id, { ...state, stage: 'edit_client' });
+  const prompt = state.entry.client
+    ? `Current client: *${state.entry.client}*\n\nType the new name (or "none" to clear):`
+    : `Who's the client or person involved? Just type their name:`;
+  await ctx.reply(prompt, { parse_mode: 'Markdown' });
+});
+
+// Category picker — one handler per cat code
+Object.keys(CAT_MAP).forEach(code => {
+  bot.action(code, async ctx => {
+    await ctx.answerCbQuery();
+    const state = await getSession(ctx.from.id);
+    if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+    state.entry.cat = CAT_MAP[code];
+    await sendConfirmation(ctx, state.entry, true);
+  });
+});
+
 bot.action('confirm', async ctx => {
-  const state = pending.get(ctx.from.id);
+  const state = await getSession(ctx.from.id);
   const entry = state && state.entry;
   if (!entry) return ctx.answerCbQuery('Entry expired — please re-send your message.');
   try {
@@ -368,7 +413,7 @@ bot.action('confirm', async ctx => {
       client: entry.client || '',
       notes: 'Added via Telegram',
     });
-    pending.delete(ctx.from.id);
+    await clearSession(ctx.from.id);
     const sign = entry.type === 'income' ? '+' : '-';
     await ctx.editMessageText(
       `✅ Logged: *${entry.desc}* ${sign}${fmtHKD(entry.amount)}`,
@@ -381,48 +426,8 @@ bot.action('confirm', async ctx => {
   }
 });
 
-bot.action('pick_cat', async ctx => {
-  await ctx.answerCbQuery();
-  const state = pending.get(ctx.from.id);
-  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
-  pending.set(ctx.from.id, { ...state, stage: 'pick_cat' });
-  await ctx.editMessageText(
-    `Pick a category for *${state.entry.desc}*:`,
-    { parse_mode: 'Markdown', ...catPickerKeyboard(state.entry.type) }
-  );
-});
-
-bot.action('back_to_confirm', async ctx => {
-  await ctx.answerCbQuery();
-  const state = pending.get(ctx.from.id);
-  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
-  await sendConfirmation(ctx, state.entry, true);
-});
-
-bot.action('edit_client', async ctx => {
-  await ctx.answerCbQuery();
-  const state = pending.get(ctx.from.id);
-  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
-  pending.set(ctx.from.id, { ...state, stage: 'edit_client' });
-  const prompt = state.entry.client
-    ? `Current client: *${state.entry.client}*\n\nType the new name (or type "none" to clear):`
-    : `Who's the client or person involved? Just type their name:`;
-  await ctx.reply(prompt, { parse_mode: 'Markdown' });
-});
-
-// Category picker actions — one handler for all cat codes
-Object.keys(CAT_MAP).forEach(code => {
-  bot.action(code, async ctx => {
-    await ctx.answerCbQuery();
-    const state = pending.get(ctx.from.id);
-    if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
-    state.entry.cat = CAT_MAP[code];
-    await sendConfirmation(ctx, state.entry, true);
-  });
-});
-
 bot.action('cancel', async ctx => {
-  pending.delete(ctx.from.id);
+  await clearSession(ctx.from.id);
   await ctx.editMessageText('Cancelled.');
   ctx.answerCbQuery();
 });
