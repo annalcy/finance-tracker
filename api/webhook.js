@@ -23,51 +23,93 @@ const INCOME_CATS = [
   'Project fee','Retainer','Sales/Resale','Event','Laisee','Other income',
 ];
 
-// ── Parse natural language with Gemini ────────────────────────────────────────
-async function parseEntry(text) {
+// ── Smart local parser — no external API needed ───────────────────────────────
+function parseEntry(text) {
+  const lower = text.toLowerCase();
   const today = new Date().toISOString().split('T')[0];
-  const prompt = `You are Anna's finance tracker assistant. Anna is a freelance creative (photographer/videographer) based in Hong Kong.
 
-Parse this message and return JSON. Be generous — even short messages like "taxi 47" or "oscar 1200" are valid.
+  // Extract amount — first number in the message
+  const amountMatch = text.match(/\d+(\.\d+)?/);
+  const amount = amountMatch ? parseFloat(amountMatch[0]) : 0;
 
-Message: "${text}"
-Today: ${today}
+  // Income signals
+  const incomeSignals = [
+    'paid me', 'pay me', 'payment to me', 'received from', 'received',
+    'laisee', 'lai see', 'red packet', 'invoice paid', 'settled invoice',
+    'project fee', 'shooting fee', 'retainer', 'earned', 'sold', 'sale',
+  ];
+  const isIncome = incomeSignals.some(s => lower.includes(s));
 
-Rules:
-- "ambiguous" must be true when you genuinely cannot tell if money was RECEIVED by Anna or PAID by Anna. Example: "oscar 1200" — is Oscar a client who paid Anna, or a friend Anna paid? Mark ambiguous.
-- "ambiguous" is false when the direction is obvious from context: "taxi 47" = expense, "client paid me 2000" = income, "lunch 80" = expense.
-- Default to expense when not ambiguous and no income signals.
-- Income signals: paid me, received, earned, laisee, shooting fee, project, invoice, sold.
-- Amount is HKD. If no date mentioned, use today.
-- If amount is missing or unclear, set amount to 0.
+  // Clear expense signals (never ambiguous)
+  const clearExpense = [
+    'taxi','uber','grab','mtr','bus','tram','train','ferry','minibus',
+    'lunch','dinner','breakfast','brunch','food','eat','restaurant','cafe',
+    'coffee','tea','drink','meal','snack','takeaway',
+    'beauty','salon','hair','spa','nail','massage','skincare',
+    'phone','netflix','spotify','subscription','app','wifi','data',
+    'shopping','clothes','shirt','dress','shoes','bag','supermarket',
+    'movie','cinema','concert','entertainment','game',
+    'gym','sport','fitness','yoga',
+    'hotel','flight','airbnb','travel','trip',
+    'book','course','class','tuition',
+    'gift','present','flowers',
+    'rent','utility','electric','water','gas','rates',
+    'fee','bank','atm',
+  ];
+  const isClearExpense = clearExpense.some(s => lower.includes(s));
 
-Expense categories: ${EXPENSE_CATS.join(', ')}
-Income categories: ${INCOME_CATS.join(', ')}
+  // Ambiguous: a person name + amount but no clear direction signal
+  const words = text.trim().split(/\s+/);
+  const hasNameWord = words.some((w, i) => i > 0 && /^[A-Z][a-zA-Z]+$/.test(w));
+  const ambiguous = !isIncome && !isClearExpense && hasNameWord && amount > 0;
 
-Return ONLY valid JSON, no explanation, no markdown:
-{"type":"expense","amount":0,"desc":"","date":"${today}","cat":"","client":"","ambiguous":false}`;
-
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'llama-3.1-8b-instant',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-    }),
-  });
-  const data = await res.json();
-  if (!data.choices || !data.choices[0]) {
-    throw new Error('Groq API error: ' + JSON.stringify(data.error || data));
+  // Determine category
+  let cat;
+  if (isIncome) {
+    if (/shoot|shooting|photo/.test(lower)) cat = 'Shooting';
+    else if (/video|edit/.test(lower)) cat = 'Video editing';
+    else if (/design|graphic/.test(lower)) cat = 'Graphic design';
+    else if (/writ|caption|copy/.test(lower)) cat = 'Writing/Caption';
+    else if (/retainer/.test(lower)) cat = 'Retainer';
+    else if (/project|fee/.test(lower)) cat = 'Project fee';
+    else if (/laisee|lai see|red packet/.test(lower)) cat = 'Laisee';
+    else if (/sold|sale|resale/.test(lower)) cat = 'Sales/Resale';
+    else if (/event/.test(lower)) cat = 'Event';
+    else if (/day rate|daily/.test(lower)) cat = 'Freelance day rate';
+    else cat = 'Other income';
+  } else {
+    if (/taxi|uber|grab|mtr|bus|tram|train|ferry|minibus/.test(lower)) cat = 'Transport';
+    else if (/lunch|dinner|breakfast|brunch|food|eat|restaurant|cafe|coffee|drink|meal|snack|takeaway/.test(lower)) cat = 'Food & drinks';
+    else if (/beauty|salon|hair|spa|nail|massage|skincare/.test(lower)) cat = 'Beauty & health';
+    else if (/phone|netflix|spotify|subscription|app|wifi/.test(lower)) cat = 'Phone & subscriptions';
+    else if (/shopping|clothes|shirt|dress|shoes|bag|supermarket/.test(lower)) cat = 'Shopping';
+    else if (/movie|cinema|concert|entertainment|game/.test(lower)) cat = 'Entertainment';
+    else if (/gym|sport|fitness|yoga/.test(lower)) cat = 'Leisure';
+    else if (/hotel|flight|airbnb|travel|trip/.test(lower)) cat = 'Travel';
+    else if (/book|course|class|tuition/.test(lower)) cat = 'Books & education';
+    else if (/gift|present|flower/.test(lower)) cat = 'Gifts & treats';
+    else if (/social|friend|party/.test(lower)) cat = 'Socializing';
+    else if (/rent|utility|electric|water|gas/.test(lower)) cat = 'Utilities';
+    else if (/fee|bank|atm/.test(lower)) cat = 'Fees';
+    else if (/family|mum|mom|dad|parent/.test(lower)) cat = 'Family';
+    else cat = 'Misc';
   }
-  const responseText = data.choices[0].message.content;
-  const start = responseText.indexOf('{');
-  const end = responseText.lastIndexOf('}');
-  if (start === -1 || end === -1) throw new Error('No JSON in response: ' + responseText.slice(0, 100));
-  return JSON.parse(responseText.slice(start, end + 1));
+
+  // Clean description — strip the amount from the text
+  const desc = text.replace(/\d+(\.\d+)?/, '').replace(/\s+/g, ' ').trim() || text;
+
+  // Extract client name — capitalised word after the first word
+  const clientWord = words.find((w, i) => i > 0 && /^[A-Z][a-zA-Z]+$/.test(w)) || '';
+
+  return {
+    type: isIncome ? 'income' : 'expense',
+    amount,
+    desc: desc.slice(0, 60),
+    date: today,
+    cat,
+    client: clientWord,
+    ambiguous,
+  };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -195,10 +237,10 @@ bot.on('text', async ctx => {
 
   let entry;
   try {
-    entry = await parseEntry(text);
+    entry = parseEntry(text);
   } catch (err) {
     console.error('parseEntry error:', err.message);
-    await ctx.reply(`ERR: ${err.message}`);
+    await ctx.reply("I didn't catch that — try something like \"taxi 47\" or \"oscar paid me 1200\".");
     return;
   }
 
