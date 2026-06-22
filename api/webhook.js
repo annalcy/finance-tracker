@@ -193,10 +193,7 @@ bot.on('text', async ctx => {
     entry = await parseEntry(text);
   } catch (err) {
     console.error('parseEntry error:', err);
-    await ctx.reply(
-      `I didn't quite catch that. Can you rephrase?\n\n` +
-      `Try: "taxi 47", "lunch 120 with oscar", or "oscar paid me 1200 for shooting"`
-    );
+    await ctx.reply(`DEBUG: ${err.message}`);
     return;
   }
 
