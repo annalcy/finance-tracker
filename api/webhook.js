@@ -54,7 +54,7 @@ Respond with JSON only, no explanation:
 }`;
 
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -62,6 +62,10 @@ Respond with JSON only, no explanation:
     }
   );
   const data = await res.json();
+  console.log('Gemini status:', res.status, 'data:', JSON.stringify(data).slice(0, 500));
+  if (!data.candidates || !data.candidates[0]) {
+    throw new Error('Gemini error: ' + JSON.stringify(data.error || data));
+  }
   const raw = data.candidates[0].content.parts[0].text.trim().replace(/^```json\n?|\n?```$/g, '');
   return JSON.parse(raw);
 }
