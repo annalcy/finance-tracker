@@ -1,5 +1,4 @@
 const { Telegraf, Markup } = require('telegraf');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const admin = require('firebase-admin');
 
 // ── Firebase Admin init ────────────────────────────────────────────────────────
@@ -14,7 +13,6 @@ const db = admin.firestore();
 
 // ── Clients ────────────────────────────────────────────────────────────────────
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ── Category lists (must match finance_tracker.html) ──────────────────────────
 const EXPENSE_CATS = [
@@ -27,10 +25,9 @@ const INCOME_CATS = [
   'Project fee','Retainer','Sales/Resale','Event','Laisee','Other income',
 ];
 
-// ── Parse natural language with Gemini ────────────────────────────────────────
+// ── Parse natural language with Gemini REST API ───────────────────────────────
 async function parseEntry(text) {
   const today = new Date().toISOString().split('T')[0];
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   const prompt = `You are Anna's finance tracker assistant. Parse this message into a structured expense or income entry.
 Today is ${today} (YYYY-MM-DD).
 
@@ -52,10 +49,20 @@ Respond with JSON only, no explanation:
   "desc": "short description",
   "date": "YYYY-MM-DD",
   "cat": "category from the list above",
-  "client": "client/person name or empty string"
+  "client": "client/person name or empty string",
+  "ambiguous": true or false
 }`;
-  const result = await model.generateContent(prompt);
-  const raw = result.response.text().trim().replace(/^```json\n?|\n?```$/g, '');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    }
+  );
+  const data = await res.json();
+  const raw = data.candidates[0].content.parts[0].text.trim().replace(/^```json\n?|\n?```$/g, '');
   return JSON.parse(raw);
 }
 
@@ -175,7 +182,7 @@ bot.on('text', async ctx => {
     );
   } catch (err) {
     console.error('parseEntry error:', err);
-    ctx.reply(`Debug error: ${err.message}`);
+    ctx.reply(`Hmm, I couldn't parse that (${err.message}). Try: "taxi 47 to cbeauty" or "momo shooting 1200"`);
   }
 });
 
