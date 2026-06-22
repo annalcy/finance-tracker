@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Anna's Finance Tracker</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Finance">
+<script>
+(function(){
+  var c=document.createElement('canvas');c.width=c.height=180;
+  var x=c.getContext('2d');
+  x.fillStyle='#fff';x.fillRect(0,0,180,180);
+  x.font='110px serif';x.textAlign='center';x.textBaseline='middle';
+  x.fillText('📊',90,95);
+  var l=document.createElement('link');l.rel='apple-touch-icon';l.href=c.toDataURL();
+  document.head.appendChild(l);
+})();
+</script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #F7F6F2; color: #1A1A18; padding: 0; }
