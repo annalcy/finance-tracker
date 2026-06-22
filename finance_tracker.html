@@ -387,11 +387,22 @@ function initApp(){
   firebase.initializeApp(FIREBASE_CONFIG);
   _db=firebase.firestore();
   _db.enableIndexedDbPersistence().catch(()=>{});
+  const _statusEl=document.createElement('div');
+  _statusEl.id='sync-status';
+  _statusEl.style.cssText='position:fixed;bottom:16px;right:16px;background:#333;color:#fff;font-size:12px;padding:6px 12px;border-radius:20px;z-index:999;';
+  _statusEl.textContent='Connecting…';
+  document.body.appendChild(_statusEl);
   _db.collection('anna_tracker').onSnapshot(snap=>{
     if(snap.empty&&!_seeded){_seeded=true;_seedFirestore();return;}
     _entries=snap.docs.map(d=>d.data());
     _entries.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);
+    _statusEl.textContent=`Synced — ${_entries.length} entries`;
+    _statusEl.style.background='#1D9E75';
+    setTimeout(()=>_statusEl.remove(),3000);
     renderCurrent();
+  },err=>{
+    _statusEl.textContent='Sync error: '+err.code;
+    _statusEl.style.background='#D85A30';
   });
   _db.collection('anna_meta').doc('imported_uuids').onSnapshot(snap=>{
     if(snap.exists)_importedUUIDs=new Set(snap.data().uuids||[]);
