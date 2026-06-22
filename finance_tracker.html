@@ -391,7 +391,7 @@ function initApp(){
   el.textContent='Loading…';
   document.body.appendChild(el);
   loadEntries();
-  setInterval(loadEntries,30000);
+  setInterval(loadEntries,300000);
 }
 function fmt(n){return '$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});}
 function today(){return new Date().toISOString().split('T')[0];}

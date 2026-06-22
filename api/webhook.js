@@ -143,14 +143,20 @@ const INCOME_CAT_BTNS = [
 
 // ── Firestore-backed session (survives serverless cold starts) ─────────────────
 async function getSession(userId) {
-  const doc = await db.collection('anna_sessions').doc(String(userId)).get();
-  return doc.exists ? doc.data() : null;
+  try {
+    const doc = await db.collection('anna_sessions').doc(String(userId)).get();
+    return doc.exists ? doc.data() : null;
+  } catch { return null; }
 }
 async function setSession(userId, data) {
-  await db.collection('anna_sessions').doc(String(userId)).set(data);
+  try {
+    await db.collection('anna_sessions').doc(String(userId)).set(data);
+  } catch { /* non-fatal */ }
 }
 async function clearSession(userId) {
-  await db.collection('anna_sessions').doc(String(userId)).delete();
+  try {
+    await db.collection('anna_sessions').doc(String(userId)).delete();
+  } catch { /* non-fatal */ }
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────────
