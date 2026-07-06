@@ -409,7 +409,7 @@ bot.action('confirm', async ctx => {
   if (!entry) return ctx.answerCbQuery('Entry expired — please re-send your message.');
   try {
     const id = Date.now();
-    await db.collection('anna_tracker').doc(String(id)).set({
+    const newEntry = {
       id,
       type: entry.type,
       desc: entry.desc,
@@ -418,7 +418,16 @@ bot.action('confirm', async ctx => {
       cat: entry.cat,
       client: entry.client || '',
       notes: 'Added via Telegram',
-    });
+    };
+    // Write to individual doc (source of truth)
+    await db.collection('anna_tracker').doc(String(id)).set(newEntry);
+    // Update cache so the tracker picks it up immediately
+    const CACHE = db.collection('anna_meta').doc('entries_cache');
+    const cacheSnap = await CACHE.get();
+    const cached = cacheSnap.exists ? (cacheSnap.data().entries || []) : [];
+    cached.push(newEntry);
+    await CACHE.set({ entries: cached });
+
     await clearSession(ctx.from.id);
     const sign = entry.type === 'income' ? '+' : '-';
     await ctx.editMessageText(
