@@ -109,6 +109,51 @@ function fmtHKD(n) {
   return 'HKD ' + Number(n).toLocaleString('en-HK', { maximumFractionDigits: 0 });
 }
 
+function parseRelativeDate(text) {
+  const lower = text.toLowerCase().trim();
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const fmt = d => d.toISOString().split('T')[0];
+
+  if (lower === 'today') return fmt(today);
+  if (lower === 'yesterday') {
+    const d = new Date(today); d.setDate(d.getDate() - 1); return fmt(d);
+  }
+
+  const daysAgo = lower.match(/^(\d+)\s+days?\s+ago$/);
+  if (daysAgo) {
+    const d = new Date(today); d.setDate(d.getDate() - parseInt(daysAgo[1])); return fmt(d);
+  }
+
+  // "Jul 7", "7 Jul", "July 7", "7 July"
+  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const monthMatch = lower.match(/(?:(\d{1,2})\s+([a-z]+)|([a-z]+)\s+(\d{1,2}))/);
+  if (monthMatch) {
+    const day = parseInt(monthMatch[1] || monthMatch[4]);
+    const monthStr = (monthMatch[2] || monthMatch[3]).slice(0, 3);
+    const monthIdx = months.indexOf(monthStr);
+    if (monthIdx !== -1 && day >= 1 && day <= 31) {
+      const year = today.getFullYear();
+      return `${year}-${String(monthIdx + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+  }
+
+  // "7/7" or "7/7/2026"
+  const slashMatch = lower.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
+  if (slashMatch) {
+    const day = parseInt(slashMatch[1]);
+    const month = parseInt(slashMatch[2]);
+    const year = slashMatch[3] ? parseInt(slashMatch[3]) : today.getFullYear();
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31)
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  // ISO: "2026-07-07"
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  return null;
+}
+
 // Short code → full category name
 const CAT_MAP = {
   c_food: 'Food & drinks', c_trans: 'Transport', c_social: 'Socializing',
@@ -181,7 +226,7 @@ async function sendConfirmation(ctx, entry, editExisting = false) {
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('✓ Log it', 'confirm'), Markup.button.callback('✗ Cancel', 'cancel')],
     [Markup.button.callback('✏️ Category', 'pick_cat'), Markup.button.callback(clientBtn, 'edit_client')],
-    [Markup.button.callback(switchLabel, 'switch_type')],
+    [Markup.button.callback('📅 Change date', 'edit_date'), Markup.button.callback(switchLabel, 'switch_type')],
   ]);
 
   if (editExisting) {
@@ -213,7 +258,8 @@ bot.start(ctx =>
     `• "oscar paid me 1200 for shooting"\n` +
     `• "received 500 laisee"\n\n` +
     `/summary — this month\n` +
-    `/recent — last 5 entries`
+    `/recent — last 5 entries\n\n` +
+    `_Tip: tap 📅 on any entry to change the date_`
   )
 );
 
@@ -236,20 +282,54 @@ bot.command('summary', async ctx => {
   const now = new Date();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const label = now.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const dayOfMonth = now.getDate();
   try {
     const snap = await db.collection('anna_tracker').get();
     const entries = snap.docs.map(d => d.data()).filter(e => e.date && e.date.startsWith(ym));
-    const income = entries.filter(e => e.type === 'income').reduce((s, e) => s + (e.amount || 0), 0);
-    const expense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + (e.amount || 0), 0);
+
+    const incomeEntries = entries.filter(e => e.type === 'income');
+    const expenseEntries = entries.filter(e => e.type === 'expense');
+    const income = incomeEntries.reduce((s, e) => s + (e.amount || 0), 0);
+    const expense = expenseEntries.reduce((s, e) => s + (e.amount || 0), 0);
     const net = income - expense;
-    ctx.reply(
+
+    // Top expense categories
+    const catTotals = {};
+    expenseEntries.forEach(e => {
+      catTotals[e.cat] = (catTotals[e.cat] || 0) + (e.amount || 0);
+    });
+    const topCats = Object.entries(catTotals)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([cat, amt]) => `  ${cat}: ${fmtHKD(amt)}`);
+
+    // Daily average spend
+    const dailyAvg = dayOfMonth > 0 ? Math.round(expense / dayOfMonth) : 0;
+
+    // Income breakdown by category
+    const incCatTotals = {};
+    incomeEntries.forEach(e => {
+      incCatTotals[e.cat] = (incCatTotals[e.cat] || 0) + (e.amount || 0);
+    });
+    const incBreakdown = Object.entries(incCatTotals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, amt]) => `  ${cat}: ${fmtHKD(amt)}`);
+
+    let msg =
       `📊 *${label}* (${entries.length} entries)\n\n` +
-      `💚 Income:   ${fmtHKD(income)}\n` +
-      `🔴 Expenses: ${fmtHKD(expense)}\n` +
+      `💚 Income: ${fmtHKD(income)}\n`;
+
+    if (incBreakdown.length > 1) msg += incBreakdown.join('\n') + '\n';
+
+    msg += `\n🔴 Expenses: ${fmtHKD(expense)}\n`;
+    if (topCats.length) msg += topCats.join('\n') + '\n';
+
+    msg +=
+      `\n📈 Daily avg: ${fmtHKD(dailyAvg)}/day\n` +
       `━━━━━━━━━━━━\n` +
-      `${net >= 0 ? '💰' : '⚠️'} Net: ${net >= 0 ? '+' : ''}${fmtHKD(net)}`,
-      { parse_mode: 'Markdown' }
-    );
+      `${net >= 0 ? '💰' : '⚠️'} Net: ${net >= 0 ? '+' : ''}${fmtHKD(net)}`;
+
+    ctx.reply(msg, { parse_mode: 'Markdown' });
   } catch (e) {
     ctx.reply('Could not fetch summary right now. Try again in a moment.');
   }
@@ -295,6 +375,18 @@ bot.on('text', async ctx => {
       ? `Got it — client set to *${state.entry.client}*`
       : 'Client cleared.';
     await ctx.reply(msg, { parse_mode: 'Markdown' });
+    await sendConfirmation(ctx, state.entry);
+    return;
+  }
+
+  if (state && state.stage === 'edit_date') {
+    const parsed = parseRelativeDate(text.trim());
+    if (!parsed) {
+      await ctx.reply('Didn\'t get that — try "yesterday", "2 days ago", "Jul 7", or "7/7".');
+      return;
+    }
+    state.entry.date = parsed;
+    await ctx.reply(`Date set to *${parsed}*`, { parse_mode: 'Markdown' });
     await sendConfirmation(ctx, state.entry);
     return;
   }
@@ -390,6 +482,17 @@ bot.action('edit_client', async ctx => {
     ? `Current client: *${state.entry.client}*\n\nType the new name (or "none" to clear):`
     : `Who's the client or person involved? Just type their name:`;
   await ctx.reply(prompt, { parse_mode: 'Markdown' });
+});
+
+bot.action('edit_date', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await setSession(ctx.from.id, { ...state, stage: 'edit_date' });
+  await ctx.reply(
+    `Current date: *${state.entry.date}*\n\nWhat date should this be? e.g.\n• yesterday\n• 2 days ago\n• Jul 7\n• 7/7`,
+    { parse_mode: 'Markdown' }
+  );
 });
 
 // Category picker — one handler per cat code
