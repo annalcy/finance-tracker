@@ -89,10 +89,28 @@
   .badge-skip { background: #F0EFEA; color: #6B6A66; font-size: 11px; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; }
   .import-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
   .import-msg { font-size: 12px; color: #6B6A66; }
+  #lock-screen { position: fixed; inset: 0; background: #F7F6F2; display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 1.5rem; }
+  .lock-card { background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 12px; padding: 2rem; width: 100%; max-width: 320px; text-align: center; }
+  .lock-card h2 { margin-bottom: 4px; }
+  .lock-card p { font-size: 13px; color: #6B6A66; margin-bottom: 1.25rem; }
+  .lock-card input { width: 100%; padding: 10px 12px; border: 1px solid #DAD8D0; border-radius: 8px; font-size: 16px; text-align: center; letter-spacing: 0.15em; margin-bottom: 10px; background: #FFFFFF; color: #1A1A18; }
+  .lock-card input.shake { border-color: #D85A30; animation: lockShake 0.3s; }
+  @keyframes lockShake { 0%,100%{transform:translateX(0);} 25%{transform:translateX(-6px);} 75%{transform:translateX(6px);} }
+  .lock-card .btn.primary { width: 100%; }
+  .lock-error { font-size: 12px; color: #D85A30; min-height: 16px; margin-top: 8px; }
 </style>
 </head>
 <body>
-<div class="app">
+<div id="lock-screen">
+  <div class="lock-card">
+    <h2>🔒 Locked</h2>
+    <p>Enter your passcode to open the finance tracker</p>
+    <input type="password" id="lock-input" inputmode="text" autocomplete="off" placeholder="passcode" autofocus />
+    <button class="btn primary" onclick="tryUnlock()">Unlock</button>
+    <div class="lock-error" id="lock-error"></div>
+  </div>
+</div>
+<div class="app" style="display:none">
   <h2>Anna's finance tracker</h2>
   <p class="subtitle">Freelance income & expenses — exported snapshot</p>
   <div class="data-note">This file stores new entries in your browser's local storage on this device. To keep using it across devices, periodically re-export an updated copy from Claude.</div>
@@ -153,15 +171,27 @@
   <div id="page-reports" class="page">
     <div class="month-pills" id="year-tabs" style="margin-bottom:1rem;"></div>
     <div class="metrics" id="metrics-annual"></div>
+
+    <div class="section-title" style="margin-top:1.25rem">This month vs last month</div>
+    <div class="metrics" id="metrics-mom"></div>
+    <div class="summary-msg" id="best-worst-month" style="margin-top:10px"></div>
+
     <div class="section-title" style="margin-top:1.25rem">Monthly income vs expenses</div>
     <div class="legend">
       <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
       <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
     </div>
     <div class="chart-wrap"><canvas id="monthly-chart" role="img" aria-label="Monthly income and expenses bar chart"></canvas></div>
+
+    <div class="section-title" style="margin-top:1.25rem">Profit margin by month</div>
+    <div class="chart-wrap" style="height:180px"><canvas id="margin-chart" role="img" aria-label="Monthly profit margin line chart"></canvas></div>
+
+    <div class="section-title" style="margin-top:1.25rem">Client concentration</div>
+    <div id="client-concentration"></div>
+
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem;">
-      <div><div class="section-title">Top expense categories</div><div id="exp-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
-      <div><div class="section-title">Income by client</div><div id="inc-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      <div><div class="section-title">Expense breakdown</div><div id="exp-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      <div><div class="section-title">Income breakdown</div><div id="inc-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
     </div>
   </div>
 
@@ -199,7 +229,7 @@ const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Socializing','Transport','Entertainment','Music & media','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null;
+let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null, chartInst2=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 
 const SEED_DATA = [
@@ -489,6 +519,101 @@ function populateRecordFilters(entries){
   document.getElementById('f-cat-filter').innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option>${c}</option>`).join('');
 }
 
+// ── Insights helpers ─────────────────────────────────────────────────────────
+function pctChange(cur,prev){ if(!prev) return cur?100:0; return Math.round((cur-prev)/Math.abs(prev)*100); }
+function trendArrow(d){ return d>0?'▲':d<0?'▼':'–'; }
+
+function computeMonthOverMonth(entries){
+  const now=new Date();
+  const curY=now.getFullYear(), curM=now.getMonth();
+  let prevY=curY, prevM=curM-1;
+  if(prevM<0){ prevM=11; prevY-=1; }
+  const inMonth=(y,m)=>entries.filter(e=>{const d=new Date(e.date);return d.getFullYear()===y&&d.getMonth()===m;});
+  const sum=(arr,t)=>arr.filter(e=>e.type===t).reduce((s,e)=>s+e.amount,0);
+  const cur=inMonth(curY,curM), prev=inMonth(prevY,prevM);
+  const ci=sum(cur,'income'), ce=sum(cur,'expense'), cp=ci-ce;
+  const pi=sum(prev,'income'), pe=sum(prev,'expense'), pp=pi-pe;
+  return {ci,ce,cp,incomeDelta:pctChange(ci,pi),expenseDelta:pctChange(ce,pe),profitDelta:pctChange(cp,pp)};
+}
+function renderMoM(entries){
+  const m=computeMonthOverMonth(entries);
+  const incColor=m.incomeDelta>=0?'#1D9E75':'#D85A30';
+  const expColor=m.expenseDelta<=0?'#1D9E75':'#D85A30';
+  const profColor=m.profitDelta>=0?'#1D9E75':'#D85A30';
+  document.getElementById('metrics-mom').innerHTML=`
+    <div class="metric"><div class="metric-label">Income</div><div class="metric-value">${fmt(m.ci)}</div><div style="font-size:12px;margin-top:4px;color:${incColor}">${trendArrow(m.incomeDelta)} ${Math.abs(m.incomeDelta)}% vs last month</div></div>
+    <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value">${fmt(m.ce)}</div><div style="font-size:12px;margin-top:4px;color:${expColor}">${trendArrow(m.expenseDelta)} ${Math.abs(m.expenseDelta)}% vs last month</div></div>
+    <div class="metric"><div class="metric-label">Profit</div><div class="metric-value">${m.cp<0?'-':''}${fmt(m.cp)}</div><div style="font-size:12px;margin-top:4px;color:${profColor}">${trendArrow(m.profitDelta)} ${Math.abs(m.profitDelta)}% vs last month</div></div>`;
+}
+
+function bestWorstMonth(ye){
+  const md=MONTHS.map((name,i)=>{
+    const me=ye.filter(e=>new Date(e.date).getMonth()===i);
+    const inc=me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+    const exp=me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+    return {name,profit:inc-exp,hasData:me.length>0};
+  }).filter(m=>m.hasData);
+  if(!md.length) return null;
+  return {best:md.reduce((a,b)=>b.profit>a.profit?b:a), worst:md.reduce((a,b)=>b.profit<a.profit?b:a)};
+}
+function renderBestWorst(ye){
+  const bw=bestWorstMonth(ye);
+  const el=document.getElementById('best-worst-month');
+  el.innerHTML=bw?`📈 Best month: <strong>${bw.best.name}</strong> (${bw.best.profit<0?'-':''}${fmt(bw.best.profit)} profit) &nbsp;·&nbsp; 📉 Worst month: <strong>${bw.worst.name}</strong> (${bw.worst.profit<0?'-':''}${fmt(bw.worst.profit)} profit)`:'';
+}
+
+function profitMarginByMonth(ye){
+  return MONTHS.map((name,i)=>{
+    const me=ye.filter(e=>new Date(e.date).getMonth()===i);
+    const inc=me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+    const exp=me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+    return inc>0?Math.round((inc-exp)/inc*100):null;
+  });
+}
+function renderMarginChart(ye){
+  const margins=profitMarginByMonth(ye);
+  if(chartInst2)chartInst2.destroy();
+  chartInst2=new Chart(document.getElementById('margin-chart'),{type:'line',data:{labels:MONTHS,datasets:[{label:'Profit margin',data:margins,borderColor:'#1A1A18',backgroundColor:'rgba(26,26,24,0.08)',fill:true,tension:0.3,spanGaps:true,pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{callback:v=>v+'%'}}}}});
+}
+
+function clientConcentration(ye){
+  const inc=ye.filter(e=>e.type==='income');
+  const total=inc.reduce((s,e)=>s+e.amount,0);
+  const byClient={};
+  inc.forEach(e=>{const c=e.client||'No client tagged';byClient[c]=(byClient[c]||0)+e.amount;});
+  const sorted=Object.entries(byClient).sort((a,b)=>b[1]-a[1]);
+  const top3=sorted.slice(0,3).map(([c,a])=>({client:c,amount:a,pct:total?Math.round(a/total*100):0}));
+  const topPct=top3[0]?.pct||0;
+  return {top3,topPct,concentrated:topPct>=50};
+}
+function renderClientConcentration(ye){
+  const cc=clientConcentration(ye);
+  const el=document.getElementById('client-concentration');
+  if(!cc.top3.length){ el.innerHTML='<div class="no-entries">No income logged this year.</div>'; return; }
+  const rows=cc.top3.map(c=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c.client}</div><div class="bar-wrap"><div class="bar" style="width:${c.pct}%;background:#5DCAA5"></div></div><div style="font-size:13px;font-weight:600;min-width:90px;text-align:right;color:#1D9E75">${c.pct}% · ${fmt(c.amount)}</div></div>`).join('');
+  const warn=cc.concentrated?`<div class="data-note" style="margin-top:10px;margin-bottom:0">⚠️ ${cc.topPct}% of this year's income comes from <strong>${cc.top3[0].client}</strong> — consider diversifying if that relationship changes.</div>`:'';
+  el.innerHTML=rows+warn;
+}
+
+function fullCatBreakdown(entries,type){
+  const list=entries.filter(e=>e.type===type);
+  const totals={}, counts={};
+  list.forEach(e=>{totals[e.cat]=(totals[e.cat]||0)+e.amount;counts[e.cat]=(counts[e.cat]||0)+1;});
+  const grand=Object.values(totals).reduce((s,v)=>s+v,0)||1;
+  return Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>({cat,amt,pct:Math.round(amt/grand*100),avg:Math.round(amt/counts[cat])}));
+}
+function breakdownRowHTML(c,maxAmt,barColor,amtColor){
+  return `<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c.cat}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(c.amt/maxAmt*100)}%;background:${barColor}"></div></div><div style="text-align:right;min-width:100px"><div style="font-size:13px;font-weight:600;color:${amtColor}">${fmt(c.amt)}</div><div style="font-size:10px;color:#6B6A66">${c.pct}% · avg ${fmt(c.avg)}</div></div></div>`;
+}
+function renderFullBreakdown(ye){
+  const exp=fullCatBreakdown(ye,'expense');
+  const maxExp=exp[0]?.amt||1;
+  document.getElementById('exp-breakdown').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30')).join(''):'<div class="no-entries">No expenses this year.</div>';
+  const inc=fullCatBreakdown(ye,'income');
+  const maxInc=inc[0]?.amt||1;
+  document.getElementById('inc-breakdown').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75')).join(''):'<div class="no-entries">No income this year.</div>';
+}
+
 function renderReports(){
   const entries=getEntries();
   const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))].sort();
@@ -501,15 +626,17 @@ function renderReports(){
     <div class="metric"><div class="metric-label">Annual income</div><div class="metric-value" style="color:#1D9E75">${fmt(ti)}</div></div>
     <div class="metric"><div class="metric-label">Annual expenses</div><div class="metric-value" style="color:#D85A30">${fmt(te)}</div></div>
     <div class="metric"><div class="metric-label">Annual profit</div><div class="metric-value" style="color:${tp>=0?'#1D9E75':'#D85A30'}">${tp<0?'-':''}${fmt(tp)}</div></div>`;
+
+  renderMoM(entries);
+  renderBestWorst(ye);
+
   const md=MONTHS.map((_,i)=>{const me=ye.filter(e=>new Date(e.date).getMonth()===i);return{income:me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0),expense:me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0)};});
   if(chartInst)chartInst.destroy();
   chartInst=new Chart(document.getElementById('monthly-chart'),{type:'bar',data:{labels:MONTHS,datasets:[{label:'Income',data:md.map(d=>d.income),backgroundColor:'#5DCAA5',borderRadius:4},{label:'Expenses',data:md.map(d=>d.expense),backgroundColor:'#F0997B',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}}}}});
-  const ec={};ye.filter(e=>e.type==='expense').forEach(e=>{ec[e.cat]=(ec[e.cat]||0)+e.amount;});
-  const se=Object.entries(ec).sort((a,b)=>b[1]-a[1]).slice(0,6);const me2=se[0]?.[1]||1;
-  document.getElementById('exp-breakdown').innerHTML=se.map(([c,a])=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(a/me2*100)}%;background:#F0997B"></div></div><div style="font-size:13px;font-weight:600;min-width:60px;text-align:right;color:#D85A30">${fmt(a)}</div></div>`).join('');
-  const ic={};ye.filter(e=>e.type==='income').forEach(e=>{ic[e.client||e.cat]=(ic[e.client||e.cat]||0)+e.amount;});
-  const si=Object.entries(ic).sort((a,b)=>b[1]-a[1]).slice(0,6);const mi=si[0]?.[1]||1;
-  document.getElementById('inc-breakdown').innerHTML=si.map(([c,a])=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(a/mi*100)}%;background:#5DCAA5"></div></div><div style="font-size:13px;font-weight:600;min-width:60px;text-align:right;color:#1D9E75">${fmt(a)}</div></div>`).join('');
+
+  renderMarginChart(ye);
+  renderClientConcentration(ye);
+  renderFullBreakdown(ye);
 }
 
 function showPage(name){
@@ -523,9 +650,34 @@ function showPage(name){
   if(name==='reports')renderReports();
 }
 
-document.getElementById('f-date').value=today();
-setType('income');
-initApp();
+// ── Lock screen ──────────────────────────────────────────────────────────────
+const PASSCODE_HASH='5e0ba113494dabf8a79f7dffc512bdf910421a7cdb8ff88d8475fd97042024ed';
+async function sha256Hex(str){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function startApp(){
+  document.getElementById('lock-screen').style.display='none';
+  document.querySelector('.app').style.display='';
+  document.getElementById('f-date').value=today();
+  setType('income');
+  initApp();
+}
+async function tryUnlock(){
+  const input=document.getElementById('lock-input');
+  const hash=await sha256Hex(input.value);
+  if(hash===PASSCODE_HASH){
+    sessionStorage.setItem('ft_unlocked','1');
+    startApp();
+  }else{
+    document.getElementById('lock-error').textContent='Wrong passcode';
+    input.classList.remove('shake');void input.offsetWidth;input.classList.add('shake');
+    input.value='';input.focus();
+  }
+}
+document.getElementById('lock-input').addEventListener('keydown',e=>{if(e.key==='Enter')tryUnlock();});
+if(sessionStorage.getItem('ft_unlocked')==='1'){ startApp(); }
+else { document.getElementById('lock-input').focus(); }
 
 // ── Import CSV ───────────────────────────────────────────────────────────────
 const PCAT_MAP = {
