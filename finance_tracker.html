@@ -53,6 +53,11 @@
   .entry-amount { font-size: 15px; font-weight: 600; flex-shrink: 0; }
   .entry-del { background: none; border: none; cursor: pointer; color: #6B6A66; font-size: 16px; padding: 2px 6px; flex-shrink: 0; opacity: 0.5; }
   .entry-del:hover { opacity: 1; color: #D85A30; }
+  .entry-edit { background: none; border: none; cursor: pointer; color: #6B6A66; font-size: 14px; padding: 2px 6px; flex-shrink: 0; opacity: 0.5; }
+  .entry-edit:hover { opacity: 1; color: #1A1A18; }
+  .bar-row.clickable { cursor: pointer; }
+  .cat-items { margin: 4px 0 10px 4px; padding-left: 10px; border-left: 2px solid #E4E2DA; display: flex; flex-direction: column; gap: 6px; }
+  .edit-banner { font-size: 12px; color: #0F6E56; background: #E1F5EE; border: 1px solid #5DCAA5; border-radius: 8px; padding: 10px 14px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
   .filter-bar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
   .filter-bar select, .filter-bar input { padding: 6px 10px; font-size: 13px; border: 1px solid #DAD8D0; border-radius: 8px; background: #FFFFFF; color: #1A1A18; }
   .page { display: none; }
@@ -116,7 +121,7 @@
   <div class="data-note">This file stores new entries in your browser's local storage on this device. To keep using it across devices, periodically re-export an updated copy from Claude.</div>
   <div class="tabs">
     <button class="tab active" onclick="showPage('overview')">Overview</button>
-    <button class="tab" onclick="showPage('add')">Add entry</button>
+    <button class="tab" onclick="cancelEdit();showPage('add')">Add entry</button>
     <button class="tab" onclick="showPage('records')">Records</button>
     <button class="tab" onclick="showPage('reports')">Reports</button>
     <button class="tab" onclick="showPage('import')">Import CSV</button>
@@ -130,6 +135,7 @@
   </div>
 
   <div id="page-add" class="page">
+    <div class="edit-banner" id="edit-banner" style="display:none"></div>
     <div class="form-card">
       <div class="type-toggle">
         <button class="btn inc" id="btn-income" onclick="setType('income')">+ Income</button>
@@ -231,6 +237,7 @@ const EXPENSE_CATS = ['Food & drinks','Socializing','Transport','Entertainment',
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null, chartInst2=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
+let _editingId=null, _expandedCats=new Set();
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -453,12 +460,52 @@ function addEntry(){
   const client=document.getElementById('f-client').value.trim();
   const notes=document.getElementById('f-notes').value.trim();
   if(!desc||!amount||!date){showMsg('Fill in description, amount and date','#D85A30');return;}
-  const entry={id:Date.now(),type:currentType,desc,amount,date,cat,client,notes};
-  _writeEntry(entry).then(()=>{showMsg('Saved!','#1D9E75');clearForm();loadEntries();}).catch(()=>showMsg('Error saving — check connection','#D85A30'));
+  const wasEditing=!!_editingId;
+  const entry={id:_editingId||Date.now(),type:currentType,desc,amount,date,cat,client,notes};
+  _writeEntry(entry).then(()=>{
+    showMsg(wasEditing?'Changes saved!':'Saved!','#1D9E75');
+    _editingId=null;
+    updateEditBanner();
+    clearForm();
+    loadEntries();
+    if(wasEditing)setTimeout(()=>showPage('records'),700);
+  }).catch(()=>showMsg('Error saving — check connection','#D85A30'));
 }
 function showMsg(m,c){const el=document.getElementById('add-msg');el.textContent=m;el.style.color=c;setTimeout(()=>el.textContent='',3000);}
 function clearForm(){['f-desc','f-amount','f-client','f-notes'].forEach(id=>document.getElementById(id).value='');document.getElementById('f-date').value=today();}
 function deleteEntry(id){_deleteDoc(id).then(()=>loadEntries()).catch(console.error);}
+
+function editEntry(id){
+  const e=_entries.find(x=>String(x.id)===String(id));
+  if(!e)return;
+  _editingId=e.id;
+  setType(e.type);
+  document.getElementById('f-desc').value=e.desc||'';
+  document.getElementById('f-amount').value=e.amount;
+  document.getElementById('f-date').value=e.date;
+  document.getElementById('f-cat').value=e.cat;
+  document.getElementById('f-client').value=e.client||'';
+  document.getElementById('f-notes').value=e.notes||'';
+  updateEditBanner();
+  showPage('add');
+}
+function cancelEdit(){
+  _editingId=null;
+  clearForm();
+  updateEditBanner();
+}
+function updateEditBanner(){
+  const el=document.getElementById('edit-banner');
+  const btn=document.querySelector('#page-add .btn.primary');
+  if(_editingId){
+    el.style.display='flex';
+    el.innerHTML=`<span>✎ Editing entry</span><span class="import-browse" onclick="cancelEdit()">Cancel edit</span>`;
+    if(btn)btn.textContent='Save changes';
+  }else{
+    el.style.display='none';
+    if(btn)btn.textContent='Save entry';
+  }
+}
 
 function entryHTML(e){
   const isIn=e.type==='income';
@@ -470,7 +517,8 @@ function entryHTML(e){
       <div class="entry-meta"><span class="entry-cat" style="background:${bg};color:${tc}">${e.cat}</span>${e.client?e.client+' · ':''}${e.date}</div>
     </div>
     <div class="entry-amount" style="color:${dc}">${isIn?'+':'-'}${fmt(e.amount)}</div>
-    <button class="entry-del" onclick="deleteEntry(${e.id})">×</button>
+    <button class="entry-edit" onclick="editEntry(${e.id})" title="Edit">✎</button>
+    <button class="entry-del" onclick="deleteEntry(${e.id})" title="Delete">×</button>
   </div>`;
 }
 
@@ -602,16 +650,31 @@ function fullCatBreakdown(entries,type){
   const grand=Object.values(totals).reduce((s,v)=>s+v,0)||1;
   return Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>({cat,amt,pct:Math.round(amt/grand*100),avg:Math.round(amt/counts[cat])}));
 }
-function breakdownRowHTML(c,maxAmt,barColor,amtColor){
-  return `<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c.cat}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(c.amt/maxAmt*100)}%;background:${barColor}"></div></div><div style="text-align:right;min-width:100px"><div style="font-size:13px;font-weight:600;color:${amtColor}">${fmt(c.amt)}</div><div style="font-size:10px;color:#6B6A66">${c.pct}% · avg ${fmt(c.avg)}</div></div></div>`;
+function toggleCatExpand(key){
+  if(_expandedCats.has(key))_expandedCats.delete(key);else _expandedCats.add(key);
+  renderReports();
+}
+function breakdownRowHTML(c,maxAmt,barColor,amtColor,type,ye){
+  const key=type+':'+c.cat;
+  const expanded=_expandedCats.has(key);
+  const items=expanded?ye.filter(e=>e.type===type&&e.cat===c.cat).sort((a,b)=>b.date.localeCompare(a.date)):[];
+  const itemsHTML=expanded?`<div class="cat-items">${items.map(e=>entryHTML(e)).join('')}</div>`:'';
+  return `<div>
+    <div class="bar-row clickable" onclick="toggleCatExpand('${key}')">
+      <div style="min-width:110px;font-size:12px;color:#6B6A66">${expanded?'▾':'▸'} ${c.cat}</div>
+      <div class="bar-wrap"><div class="bar" style="width:${Math.round(c.amt/maxAmt*100)}%;background:${barColor}"></div></div>
+      <div style="text-align:right;min-width:100px"><div style="font-size:13px;font-weight:600;color:${amtColor}">${fmt(c.amt)}</div><div style="font-size:10px;color:#6B6A66">${c.pct}% · avg ${fmt(c.avg)}</div></div>
+    </div>
+    ${itemsHTML}
+  </div>`;
 }
 function renderFullBreakdown(ye){
   const exp=fullCatBreakdown(ye,'expense');
   const maxExp=exp[0]?.amt||1;
-  document.getElementById('exp-breakdown').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30')).join(''):'<div class="no-entries">No expenses this year.</div>';
+  document.getElementById('exp-breakdown').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30','expense',ye)).join(''):'<div class="no-entries">No expenses this year.</div>';
   const inc=fullCatBreakdown(ye,'income');
   const maxInc=inc[0]?.amt||1;
-  document.getElementById('inc-breakdown').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75')).join(''):'<div class="no-entries">No income this year.</div>';
+  document.getElementById('inc-breakdown').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',ye)).join(''):'<div class="no-entries">No income this year.</div>';
 }
 
 function renderReports(){
