@@ -128,7 +128,8 @@
   </div>
 
   <div id="page-overview" class="page active">
-    <div class="month-pills" id="month-pills"></div>
+    <div class="month-pills" id="overview-year-pills"></div>
+    <div class="month-pills" id="overview-month-pills"></div>
     <div class="metrics" id="metrics"></div>
     <div class="section-title">All entries this month</div>
     <div class="entries-list" id="recent-entries"></div>
@@ -175,52 +176,59 @@
   </div>
 
   <div id="page-reports" class="page">
-    <div class="section-title">All-time overview</div>
-    <div class="metrics" id="metrics-alltime"></div>
-    <div class="summary-msg" id="alltime-span" style="margin-top:10px"></div>
-
-    <div class="section-title" style="margin-top:1.25rem">Income by year</div>
-    <div class="legend">
-      <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
-      <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
-    </div>
-    <div class="chart-wrap"><canvas id="yearly-chart" role="img" aria-label="Yearly income and expenses bar chart"></canvas></div>
-    <div class="summary-msg" id="best-worst-year" style="margin-top:8px"></div>
-    <div class="summary-msg" id="income-trend"></div>
-
-    <div class="section-title" style="margin-top:1.25rem">All-time top clients</div>
-    <div id="alltime-clients"></div>
-
-    <div class="section-title" style="margin-top:1.25rem">All-time category breakdown</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
-      <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top expenses</div><div id="alltime-exp-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
-      <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top income</div><div id="alltime-inc-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+    <div class="month-pills" id="report-view-toggle">
+      <span class="pill active" data-view="alltime" onclick="setReportView('alltime')">All-time overview</span>
+      <span class="pill" data-view="year" onclick="setReportView('year')">By year</span>
     </div>
 
-    <div class="section-title" style="margin-top:2rem">By year</div>
-    <div class="month-pills" id="year-tabs" style="margin-bottom:1rem;"></div>
-    <div class="metrics" id="metrics-annual"></div>
+    <div id="report-view-alltime">
+      <div class="metrics" id="metrics-alltime"></div>
+      <div class="summary-msg" id="alltime-span" style="margin-top:10px"></div>
 
-    <div class="section-title" style="margin-top:1.25rem">This month vs last month</div>
-    <div class="metrics" id="metrics-mom"></div>
-    <div class="summary-msg" id="best-worst-month" style="margin-top:10px"></div>
+      <div class="section-title" style="margin-top:1.25rem">Income by year</div>
+      <div class="legend">
+        <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
+        <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
+      </div>
+      <div class="chart-wrap"><canvas id="yearly-chart" role="img" aria-label="Yearly income and expenses bar chart"></canvas></div>
+      <div class="summary-msg" id="best-worst-year" style="margin-top:8px"></div>
+      <div class="summary-msg" id="income-trend"></div>
 
-    <div class="section-title" style="margin-top:1.25rem">Monthly income vs expenses</div>
-    <div class="legend">
-      <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
-      <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
+      <div class="section-title" style="margin-top:1.25rem">All-time top clients</div>
+      <div id="alltime-clients"></div>
+
+      <div class="section-title" style="margin-top:1.25rem">All-time category breakdown</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+        <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top expenses</div><div id="alltime-exp-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+        <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top income</div><div id="alltime-inc-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      </div>
     </div>
-    <div class="chart-wrap"><canvas id="monthly-chart" role="img" aria-label="Monthly income and expenses bar chart"></canvas></div>
 
-    <div class="section-title" style="margin-top:1.25rem">Profit margin by month</div>
-    <div class="chart-wrap" style="height:180px"><canvas id="margin-chart" role="img" aria-label="Monthly profit margin line chart"></canvas></div>
+    <div id="report-view-year" style="display:none">
+      <div class="month-pills" id="year-tabs" style="margin-bottom:1rem;"></div>
+      <div class="metrics" id="metrics-annual"></div>
 
-    <div class="section-title" style="margin-top:1.25rem">Client concentration</div>
-    <div id="client-concentration"></div>
+      <div class="section-title" style="margin-top:1.25rem">This month vs last month</div>
+      <div class="metrics" id="metrics-mom"></div>
+      <div class="summary-msg" id="best-worst-month" style="margin-top:10px"></div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem;">
-      <div><div class="section-title">Expense breakdown</div><div id="exp-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
-      <div><div class="section-title">Income breakdown</div><div id="inc-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      <div class="section-title" style="margin-top:1.25rem">Monthly income vs expenses</div>
+      <div class="legend">
+        <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
+        <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
+      </div>
+      <div class="chart-wrap"><canvas id="monthly-chart" role="img" aria-label="Monthly income and expenses bar chart"></canvas></div>
+
+      <div class="section-title" style="margin-top:1.25rem">Profit margin by month</div>
+      <div class="chart-wrap" style="height:180px"><canvas id="margin-chart" role="img" aria-label="Monthly profit margin line chart"></canvas></div>
+
+      <div class="section-title" style="margin-top:1.25rem">Client concentration</div>
+      <div id="client-concentration"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem;">
+        <div><div class="section-title">Expense breakdown</div><div id="exp-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+        <div><div class="section-title">Income breakdown</div><div id="inc-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      </div>
     </div>
   </div>
 
@@ -258,9 +266,11 @@ const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie','Entertainment','CD/Vinyl','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null, chartInst2=null, chartInst3=null;
+const _todayParts=today().split('-').map(Number);
+let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 let _editingId=null, _expandedCats=new Set();
+let _reportView='alltime';
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -547,8 +557,17 @@ function entryHTML(e){
 
 function renderOverview(){
   const entries=getEntries();
-  const keys=[...new Set(entries.map(e=>{const d=new Date(e.date);return`${d.getFullYear()}-${d.getMonth()}`;}))].sort((a,b)=>{const[ay,am]=a.split('-').map(Number),[by,bm]=b.split('-').map(Number);return ay!==by?ay-by:am-bm;});
-  if(keys.length&&!keys.includes(`${selYear}-${selMonth}`)){const l=keys[keys.length-1].split('-').map(Number);selYear=l[0];selMonth=l[1];}
+  const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))];
+  if(!years.includes(selYear))years.push(selYear);
+  years.sort((a,b)=>a-b);
+
+  document.getElementById('overview-year-pills').innerHTML=years.map(y=>
+    `<span class="pill${y===selYear?' active':''}" onclick="selYear=${y};renderOverview()">${y}</span>`
+  ).join('');
+  document.getElementById('overview-month-pills').innerHTML=MONTHS.map((m,i)=>
+    `<span class="pill${i===selMonth?' active':''}" onclick="selMonth=${i};renderOverview()">${m}</span>`
+  ).join('');
+
   const me=entries.filter(e=>{const d=new Date(e.date);return d.getMonth()===selMonth&&d.getFullYear()===selYear;});
   const inc=me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
   const exp=me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
@@ -558,10 +577,6 @@ function renderOverview(){
     <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value" style="color:#D85A30">${fmt(exp)}</div></div>
     <div class="metric"><div class="metric-label">Net profit</div><div class="metric-value" style="color:${p>=0?'#1D9E75':'#D85A30'}">${p<0?'-':''}${fmt(p)}</div></div>`;
   document.getElementById('recent-entries').innerHTML=me.length?me.map(e=>entryHTML(e)).join(''):'<div class="no-entries">No entries this month.</div>';
-  document.getElementById('month-pills').innerHTML=keys.slice().reverse().map(key=>{
-    const[y,m]=key.split('-').map(Number);const act=m===selMonth&&y===selYear;
-    return`<span class="pill${act?' active':''}" onclick="selMonth=${m};selYear=${y};renderOverview()">${MONTHS[m]} ${y}</span>`;
-  }).join('');
 }
 
 function renderRecords(){
@@ -782,16 +797,24 @@ function renderAllTimeCategories(entries){
   document.getElementById('alltime-inc-cats').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',entries,'alltime')).join(''):'<div class="no-entries">No income yet.</div>';
 }
 
-function renderReports(){
-  const entries=getEntries();
+function setReportView(v){
+  _reportView=v;
+  document.getElementById('report-view-alltime').style.display=v==='alltime'?'':'none';
+  document.getElementById('report-view-year').style.display=v==='year'?'':'none';
+  document.querySelectorAll('#report-view-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.view===v));
+  renderReports();
+}
 
+function renderAllTimeReportView(entries){
   renderAllTimeMetrics(entries);
   const yt=renderYearlyChart(entries);
   renderBestWorstYear(yt);
   renderIncomeTrend(yt);
   renderAllTimeClients(entries);
   renderAllTimeCategories(entries);
+}
 
+function renderByYearReportView(entries){
   const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))].sort();
   document.getElementById('year-tabs').innerHTML=years.map(y=>`<span class="pill${y===repYear?' active':''}" onclick="repYear=${y};renderReports()">${y}</span>`).join('');
   const ye=entries.filter(e=>new Date(e.date).getFullYear()===repYear);
@@ -813,6 +836,12 @@ function renderReports(){
   renderMarginChart(ye);
   renderClientConcentration(ye);
   renderFullBreakdown(ye);
+}
+
+function renderReports(){
+  const entries=getEntries();
+  if(_reportView==='alltime') renderAllTimeReportView(entries);
+  else renderByYearReportView(entries);
 }
 
 function showPage(name){
