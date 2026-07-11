@@ -175,6 +175,29 @@
   </div>
 
   <div id="page-reports" class="page">
+    <div class="section-title">All-time overview</div>
+    <div class="metrics" id="metrics-alltime"></div>
+    <div class="summary-msg" id="alltime-span" style="margin-top:10px"></div>
+
+    <div class="section-title" style="margin-top:1.25rem">Income by year</div>
+    <div class="legend">
+      <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
+      <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
+    </div>
+    <div class="chart-wrap"><canvas id="yearly-chart" role="img" aria-label="Yearly income and expenses bar chart"></canvas></div>
+    <div class="summary-msg" id="best-worst-year" style="margin-top:8px"></div>
+    <div class="summary-msg" id="income-trend"></div>
+
+    <div class="section-title" style="margin-top:1.25rem">All-time top clients</div>
+    <div id="alltime-clients"></div>
+
+    <div class="section-title" style="margin-top:1.25rem">All-time category breakdown</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+      <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top expenses</div><div id="alltime-exp-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top income</div><div id="alltime-inc-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+    </div>
+
+    <div class="section-title" style="margin-top:2rem">By year</div>
     <div class="month-pills" id="year-tabs" style="margin-bottom:1rem;"></div>
     <div class="metrics" id="metrics-annual"></div>
 
@@ -235,7 +258,7 @@ const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie','Entertainment','CD/Vinyl','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null, chartInst2=null;
+let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null, chartInst2=null, chartInst3=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 let _editingId=null, _expandedCats=new Set();
 
@@ -654,10 +677,10 @@ function toggleCatExpand(key){
   if(_expandedCats.has(key))_expandedCats.delete(key);else _expandedCats.add(key);
   renderReports();
 }
-function breakdownRowHTML(c,maxAmt,barColor,amtColor,type,ye){
-  const key=type+':'+c.cat;
+function breakdownRowHTML(c,maxAmt,barColor,amtColor,type,sourceEntries,scope){
+  const key=scope+':'+type+':'+c.cat;
   const expanded=_expandedCats.has(key);
-  const items=expanded?ye.filter(e=>e.type===type&&e.cat===c.cat).sort((a,b)=>b.date.localeCompare(a.date)):[];
+  const items=expanded?sourceEntries.filter(e=>e.type===type&&e.cat===c.cat).sort((a,b)=>b.date.localeCompare(a.date)):[];
   const itemsHTML=expanded?`<div class="cat-items">${items.map(e=>entryHTML(e)).join('')}</div>`:'';
   return `<div>
     <div class="bar-row clickable" onclick="toggleCatExpand('${key}')">
@@ -671,14 +694,104 @@ function breakdownRowHTML(c,maxAmt,barColor,amtColor,type,ye){
 function renderFullBreakdown(ye){
   const exp=fullCatBreakdown(ye,'expense');
   const maxExp=exp[0]?.amt||1;
-  document.getElementById('exp-breakdown').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30','expense',ye)).join(''):'<div class="no-entries">No expenses this year.</div>';
+  document.getElementById('exp-breakdown').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30','expense',ye,'year')).join(''):'<div class="no-entries">No expenses this year.</div>';
   const inc=fullCatBreakdown(ye,'income');
   const maxInc=inc[0]?.amt||1;
-  document.getElementById('inc-breakdown').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',ye)).join(''):'<div class="no-entries">No income this year.</div>';
+  document.getElementById('inc-breakdown').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',ye,'year')).join(''):'<div class="no-entries">No income this year.</div>';
+}
+
+// ── All-time overview ────────────────────────────────────────────────────────
+function monthsBetween(a,b){
+  const [ay,am]=a.split('-').map(Number), [by,bm]=b.split('-').map(Number);
+  return (by-ay)*12+(bm-am);
+}
+function renderAllTimeMetrics(entries){
+  const ti=entries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+  const te=entries.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+  const tp=ti-te;
+  document.getElementById('metrics-alltime').innerHTML=`
+    <div class="metric"><div class="metric-label">Lifetime income</div><div class="metric-value" style="color:#1D9E75">${fmt(ti)}</div></div>
+    <div class="metric"><div class="metric-label">Lifetime expenses</div><div class="metric-value" style="color:#D85A30">${fmt(te)}</div></div>
+    <div class="metric"><div class="metric-label">Lifetime profit</div><div class="metric-value" style="color:${tp>=0?'#1D9E75':'#D85A30'}">${tp<0?'-':''}${fmt(tp)}</div></div>`;
+
+  const el=document.getElementById('alltime-span');
+  if(!entries.length){ el.textContent=''; return; }
+  const dates=entries.map(e=>e.date).sort();
+  const first=dates[0], last=dates[dates.length-1];
+  const months=monthsBetween(first,last);
+  const years=Math.floor(months/12), remMonths=months%12;
+  const span=years>0?`${years} year${years===1?'':'s'}${remMonths?', '+remMonths+' month'+(remMonths===1?'':'s'):''}`:`${months} month${months===1?'':'s'}`;
+  el.textContent=`Tracking since ${first} · ${span} of data · ${entries.length} entries`;
+}
+
+function yearlyTotals(entries){
+  const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))].sort();
+  return years.map(y=>{
+    const ye=entries.filter(e=>new Date(e.date).getFullYear()===y);
+    const inc=ye.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
+    const exp=ye.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
+    return {year:y,income:inc,expense:exp,profit:inc-exp};
+  });
+}
+function renderYearlyChart(entries){
+  const yt=yearlyTotals(entries);
+  if(chartInst3)chartInst3.destroy();
+  chartInst3=new Chart(document.getElementById('yearly-chart'),{type:'bar',data:{labels:yt.map(y=>String(y.year)),datasets:[{label:'Income',data:yt.map(y=>y.income),backgroundColor:'#5DCAA5',borderRadius:4},{label:'Expenses',data:yt.map(y=>y.expense),backgroundColor:'#F0997B',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}}}}});
+  return yt;
+}
+
+function renderBestWorstYear(yt){
+  const el=document.getElementById('best-worst-year');
+  if(!yt.length){ el.textContent=''; return; }
+  const best=yt.reduce((a,b)=>b.profit>a.profit?b:a);
+  const worst=yt.reduce((a,b)=>b.profit<a.profit?b:a);
+  el.innerHTML=`📈 Best year: <strong>${best.year}</strong> (${best.profit<0?'-':''}${fmt(best.profit)} profit) &nbsp;·&nbsp; 📉 Worst year: <strong>${worst.year}</strong> (${worst.profit<0?'-':''}${fmt(worst.profit)} profit)`;
+}
+
+function renderIncomeTrend(yt){
+  const el=document.getElementById('income-trend');
+  const thisYear=new Date().getFullYear();
+  const complete=yt.filter(y=>y.year<thisYear);
+  if(complete.length<2){ el.textContent='Not enough full years of data yet to call a trend.'; return; }
+  const a=complete[complete.length-2], b=complete[complete.length-1];
+  const pct=pctChange(b.income,a.income);
+  let label;
+  if(pct>5) label=`📈 Growing — income up ${pct}% from ${a.year} to ${b.year}`;
+  else if(pct<-5) label=`📉 Declining — income down ${Math.abs(pct)}% from ${a.year} to ${b.year}`;
+  else label=`→ Roughly flat — income changed ${pct>=0?'+':''}${pct}% from ${a.year} to ${b.year}`;
+  el.textContent=label;
+}
+
+function renderAllTimeClients(entries){
+  const inc=entries.filter(e=>e.type==='income'&&e.client);
+  const totals={};
+  inc.forEach(e=>{totals[e.client]=(totals[e.client]||0)+e.amount;});
+  const top=Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([client,amount])=>({client,amount}));
+  const el=document.getElementById('alltime-clients');
+  if(!top.length){ el.innerHTML='<div class="no-entries">No income logged yet.</div>'; return; }
+  const max=top[0].amount;
+  el.innerHTML=top.map(c=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c.client}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(c.amount/max*100)}%;background:#5DCAA5"></div></div><div style="font-size:13px;font-weight:600;min-width:70px;text-align:right;color:#1D9E75">${fmt(c.amount)}</div></div>`).join('');
+}
+
+function renderAllTimeCategories(entries){
+  const exp=fullCatBreakdown(entries,'expense').slice(0,8);
+  const maxExp=exp[0]?.amt||1;
+  document.getElementById('alltime-exp-cats').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30','expense',entries,'alltime')).join(''):'<div class="no-entries">No expenses yet.</div>';
+  const inc=fullCatBreakdown(entries,'income').slice(0,8);
+  const maxInc=inc[0]?.amt||1;
+  document.getElementById('alltime-inc-cats').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',entries,'alltime')).join(''):'<div class="no-entries">No income yet.</div>';
 }
 
 function renderReports(){
   const entries=getEntries();
+
+  renderAllTimeMetrics(entries);
+  const yt=renderYearlyChart(entries);
+  renderBestWorstYear(yt);
+  renderIncomeTrend(yt);
+  renderAllTimeClients(entries);
+  renderAllTimeCategories(entries);
+
   const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))].sort();
   document.getElementById('year-tabs').innerHTML=years.map(y=>`<span class="pill${y===repYear?' active':''}" onclick="repYear=${y};renderReports()">${y}</span>`).join('');
   const ye=entries.filter(e=>new Date(e.date).getFullYear()===repYear);
