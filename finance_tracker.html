@@ -186,6 +186,11 @@
       <div class="metrics" id="metrics-alltime"></div>
       <div class="summary-msg" id="alltime-span" style="margin-top:10px"></div>
 
+      <div class="section-title" style="margin-top:1.25rem">Financial insights</div>
+      <div class="form-card">
+        <div id="insights-text" style="font-size:13px;line-height:1.7;color:#1A1A18"></div>
+      </div>
+
       <div class="section-title" style="margin-top:1.25rem">Income by year <span style="font-weight:400;text-transform:none;letter-spacing:normal;color:#ADABA3">(2024 onwards — freelance years)</span></div>
       <div class="legend">
         <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
@@ -992,8 +997,59 @@ function saveHoldings(){
     });
 }
 
+function generateInsightsLines(entries){
+  const lines=[];
+  const freelanceEntries=entries.filter(e=>new Date(e.date).getFullYear()>=COMPARISON_START_YEAR);
+  const yt=yearlyTotals(entries); // already scoped to COMPARISON_START_YEAR+
+
+  const trans=growthTrajectory(yt);
+  if(trans.length){
+    const t=trans[trans.length-1];
+    const label=t.partial?' (annualized pace, year still in progress)':'';
+    if(t.pct>20) lines.push(`📈 Income is climbing — up ${t.pct}% from ${t.from} to ${t.to}${label}.`);
+    else if(t.pct<-10) lines.push(`📉 Income is down ${Math.abs(t.pct)}% from ${t.from} to ${t.to}${label}.`);
+    else lines.push(`→ Income has held roughly steady from ${t.from} to ${t.to}${label}.`);
+  }
+
+  const cc=clientConcentration(freelanceEntries);
+  if(cc.top3.length){
+    if(cc.concentrated) lines.push(`⚠️ ${cc.topPct}% of your freelance income comes from ${cc.top3[0].client} — real concentration risk if that relationship changes.`);
+    else lines.push(`✓ Your income is reasonably diversified — your biggest client (${cc.top3[0].client}) is only ${cc.topPct}% of the total.`);
+  }
+
+  const totalFreelanceIncome=yt.reduce((s,y)=>s+y.income,0);
+  const totalFreelanceProfit=yt.reduce((s,y)=>s+y.profit,0);
+  if(totalFreelanceIncome>0){
+    const marginPct=Math.round(totalFreelanceProfit/totalFreelanceIncome*100);
+    if(marginPct<10) lines.push(`⚠️ Your profit margin since ${COMPARISON_START_YEAR} is thin — only ${marginPct}% of income is kept as profit.`);
+    else lines.push(`💰 You're keeping about ${marginPct}% of income as profit since ${COMPARISON_START_YEAR}.`);
+  }
+
+  const catTotals={};
+  freelanceEntries.filter(e=>e.type==='expense').forEach(e=>{catTotals[e.cat]=(catTotals[e.cat]||0)+e.amount;});
+  const topCatEntry=Object.entries(catTotals).sort((a,b)=>b[1]-a[1])[0];
+  if(topCatEntry){
+    const totalExp=Object.values(catTotals).reduce((s,v)=>s+v,0);
+    const pct=Math.round(topCatEntry[1]/totalExp*100);
+    lines.push(`🏷 ${topCatEntry[0]} is your biggest expense category since ${COMPARISON_START_YEAR}, at ${pct}% of spend (${fmt(topCatEntry[1])}).`);
+  }
+
+  const mom=computeMonthOverMonth(entries);
+  if(mom.ci>0||mom.ce>0){
+    lines.push(`📅 This month vs last: income ${trendArrow(mom.incomeDelta)} ${Math.abs(mom.incomeDelta)}%, expenses ${trendArrow(mom.expenseDelta)} ${Math.abs(mom.expenseDelta)}%.`);
+  }
+
+  return lines;
+}
+function renderLocalInsights(entries){
+  const lines=generateInsightsLines(entries);
+  const el=document.getElementById('insights-text');
+  el.innerHTML=lines.length?lines.map(l=>`<div style="margin-bottom:8px">${l}</div>`).join(''):'<span style="color:#6B6A66">Not enough data yet for insights.</span>';
+}
+
 function renderAllTimeReportView(entries){
   renderAllTimeMetrics(entries);
+  renderLocalInsights(entries);
   const yt=renderYearlyChart(entries);
   renderBestWorstYear(yt);
   renderIncomeTrend(yt);
