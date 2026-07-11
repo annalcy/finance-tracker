@@ -179,6 +179,7 @@
     <div class="month-pills" id="report-view-toggle">
       <span class="pill active" data-view="alltime" onclick="setReportView('alltime')">All-time overview</span>
       <span class="pill" data-view="year" onclick="setReportView('year')">By year</span>
+      <span class="pill" data-view="investments" onclick="setReportView('investments')">Investments</span>
     </div>
 
     <div id="report-view-alltime">
@@ -250,6 +251,19 @@
         <div><div class="section-title">Income breakdown</div><div id="inc-breakdown" style="display:flex;flex-direction:column;gap:6px;"></div></div>
       </div>
     </div>
+
+    <div id="report-view-investments" style="display:none">
+      <div class="section-title">Portfolio holdings</div>
+      <div class="summary-msg" id="investments-msg-top"></div>
+      <div class="entries-list" id="investments-table"></div>
+      <div class="btn-row" style="justify-content:flex-start;margin-top:10px">
+        <button class="btn primary" onclick="saveHoldings()">Save holdings</button>
+      </div>
+      <div id="investments-msg" style="font-size:13px;margin-top:8px"></div>
+
+      <div class="metrics" style="margin-top:1.25rem" id="investments-totals"></div>
+      <div class="data-note" style="margin-top:1rem">This tracks your portfolio separately from your freelance cash flow above — money moved into stocks/crypto isn't logged as an expense, so this is additive to (not already included in) your lifetime profit figures.</div>
+    </div>
   </div>
 
   <div id="page-import" class="page">
@@ -282,6 +296,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
+const INVESTMENTS_API = 'https://finance-tracker-anna-li.vercel.app/api/investments';
+const PRICES_API = 'https://finance-tracker-anna-li.vercel.app/api/prices';
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie','Entertainment','CD/Vinyl','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
@@ -292,6 +308,7 @@ let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], rep
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
+let _holdings=[], _prices={};
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -896,8 +913,81 @@ function setReportView(v){
   _reportView=v;
   document.getElementById('report-view-alltime').style.display=v==='alltime'?'':'none';
   document.getElementById('report-view-year').style.display=v==='year'?'':'none';
+  document.getElementById('report-view-investments').style.display=v==='investments'?'':'none';
   document.querySelectorAll('#report-view-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.view===v));
   renderReports();
+}
+
+// ── Investments ──────────────────────────────────────────────────────────────
+function investmentRowHTML(item,priceData){
+  const price=priceData?.price;
+  const value=price!=null?price*item.quantity:null;
+  const cost=item.avgCost*item.quantity;
+  const gain=value!=null?value-cost:null;
+  const gainPct=(cost>0&&gain!=null)?Math.round(gain/cost*100):null;
+  const gainColor=gain==null?'#6B6A66':gain>=0?'#1D9E75':'#D85A30';
+  const gainText=gain!=null?(gain<0?'-':'+')+fmt(Math.abs(gain))+(gainPct!=null?` (${gainPct>=0?'+':''}${gainPct}%)`:''):(price!=null?'no cost basis set':'price unavailable');
+  return `<div class="entry-row" style="flex-direction:column;align-items:stretch;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><span style="font-weight:600;font-size:14px">${item.symbol}</span> <span style="font-size:12px;color:#6B6A66">${item.name}</span></div>
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:600">${value!=null?fmt(value):'—'}</div>
+        <div style="font-size:11px;color:${gainColor}">${gainText}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:11px;color:#6B6A66">Qty <input type="number" id="inv-qty-${item.symbol}" value="${item.quantity||''}" step="any" min="0" style="width:90px;padding:5px 8px;border:1px solid #DAD8D0;border-radius:6px;font-size:12px;margin-left:4px"/></label>
+      <label style="font-size:11px;color:#6B6A66">Avg cost <input type="number" id="inv-cost-${item.symbol}" value="${item.avgCost||''}" step="any" min="0" style="width:90px;padding:5px 8px;border:1px solid #DAD8D0;border-radius:6px;font-size:12px;margin-left:4px"/></label>
+      <span style="font-size:11px;color:#6B6A66">Price: ${price!=null?fmt(price):'—'}</span>
+    </div>
+  </div>`;
+}
+function renderInvestments(){
+  document.getElementById('investments-table').innerHTML=_holdings.length?_holdings.map(item=>investmentRowHTML(item,_prices[item.symbol])).join(''):'<div class="no-entries">No holdings configured.</div>';
+  let totalValue=0, totalCost=0, anyPriced=false;
+  _holdings.forEach(item=>{
+    const p=_prices[item.symbol]?.price;
+    if(p!=null){ totalValue+=p*item.quantity; anyPriced=true; }
+    totalCost+=item.avgCost*item.quantity;
+  });
+  const totalGain=totalValue-totalCost;
+  document.getElementById('investments-totals').innerHTML=`
+    <div class="metric"><div class="metric-label">Portfolio value</div><div class="metric-value">${anyPriced?fmt(totalValue):'—'}</div></div>
+    <div class="metric"><div class="metric-label">Total invested (cost)</div><div class="metric-value">${fmt(totalCost)}</div></div>
+    <div class="metric"><div class="metric-label">Unrealized gain/loss</div><div class="metric-value" style="color:${totalGain>=0?'#1D9E75':'#D85A30'}">${totalCost>0?(totalGain<0?'-':'+')+fmt(Math.abs(totalGain)):'—'}</div></div>`;
+}
+async function loadInvestments(){
+  document.getElementById('investments-msg-top').textContent='Loading holdings and live prices…';
+  try{
+    const [holdRes,priceRes]=await Promise.all([fetch(INVESTMENTS_API),fetch(PRICES_API)]);
+    const holdData=await holdRes.json();
+    const priceData=await priceRes.json();
+    _holdings=holdData.items||[];
+    _prices=priceData.prices||{};
+    document.getElementById('investments-msg-top').textContent='';
+    renderInvestments();
+  }catch(e){
+    document.getElementById('investments-msg-top').textContent='Could not load investment data — check your connection.';
+  }
+}
+function saveHoldings(){
+  const updated=_holdings.map(item=>{
+    const qtyEl=document.getElementById('inv-qty-'+item.symbol);
+    const costEl=document.getElementById('inv-cost-'+item.symbol);
+    return {...item,quantity:parseFloat(qtyEl.value)||0,avgCost:parseFloat(costEl.value)||0};
+  });
+  fetch(INVESTMENTS_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:updated})})
+    .then(()=>{
+      _holdings=updated;
+      const msg=document.getElementById('investments-msg');
+      msg.textContent='Saved!'; msg.style.color='#1D9E75';
+      renderInvestments();
+      setTimeout(()=>{msg.textContent='';},3000);
+    })
+    .catch(()=>{
+      const msg=document.getElementById('investments-msg');
+      msg.textContent='Error saving — check your connection.'; msg.style.color='#D85A30';
+    });
 }
 
 function renderAllTimeReportView(entries){
@@ -942,7 +1032,8 @@ function renderByYearReportView(entries){
 function renderReports(){
   const entries=getEntries();
   if(_reportView==='alltime') renderAllTimeReportView(entries);
-  else renderByYearReportView(entries);
+  else if(_reportView==='year') renderByYearReportView(entries);
+  else if(_reportView==='investments') loadInvestments();
 }
 
 function showPage(name){
