@@ -202,6 +202,26 @@
         <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top expenses</div><div id="alltime-exp-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
         <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top income</div><div id="alltime-inc-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
       </div>
+
+      <div class="section-title" style="margin-top:2rem">Freelance years (2024+)</div>
+
+      <div class="section-title" style="margin-top:1.25rem">Average per month by year</div>
+      <div id="yearly-averages"></div>
+
+      <div class="section-title" style="margin-top:1.25rem">Growth trajectory</div>
+      <div id="growth-trajectory"></div>
+
+      <div class="section-title" style="margin-top:1.25rem">Top clients (2024+)</div>
+      <div id="freelance-clients"></div>
+
+      <div class="section-title" style="margin-top:1.25rem">Top categories (2024+)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;">
+        <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top expenses</div><div id="freelance-exp-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+        <div><div style="font-size:11px;color:#6B6A66;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Top income</div><div id="freelance-inc-cats" style="display:flex;flex-direction:column;gap:6px;"></div></div>
+      </div>
+
+      <div class="section-title" style="margin-top:1.25rem">Client concentration by year</div>
+      <div id="concentration-by-year"></div>
     </div>
 
     <div id="report-view-year" style="display:none">
@@ -778,24 +798,98 @@ function renderIncomeTrend(yt){
   el.textContent=label;
 }
 
-function renderAllTimeClients(entries){
+function topClientsFor(entries,n=8){
   const inc=entries.filter(e=>e.type==='income'&&e.client);
   const totals={};
   inc.forEach(e=>{totals[e.client]=(totals[e.client]||0)+e.amount;});
-  const top=Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([client,amount])=>({client,amount}));
-  const el=document.getElementById('alltime-clients');
-  if(!top.length){ el.innerHTML='<div class="no-entries">No income logged yet.</div>'; return; }
+  return Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([client,amount])=>({client,amount}));
+}
+function clientRowsHTML(top){
+  if(!top.length) return '<div class="no-entries">No income logged yet.</div>';
   const max=top[0].amount;
-  el.innerHTML=top.map(c=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c.client}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(c.amount/max*100)}%;background:#5DCAA5"></div></div><div style="font-size:13px;font-weight:600;min-width:70px;text-align:right;color:#1D9E75">${fmt(c.amount)}</div></div>`).join('');
+  return top.map(c=>`<div class="bar-row"><div style="min-width:110px;font-size:12px;color:#6B6A66">${c.client}</div><div class="bar-wrap"><div class="bar" style="width:${Math.round(c.amount/max*100)}%;background:#5DCAA5"></div></div><div style="font-size:13px;font-weight:600;min-width:70px;text-align:right;color:#1D9E75">${fmt(c.amount)}</div></div>`).join('');
+}
+function renderAllTimeClients(entries){
+  document.getElementById('alltime-clients').innerHTML=clientRowsHTML(topClientsFor(entries));
 }
 
-function renderAllTimeCategories(entries){
+function renderCategoryBreakdown(entries,expElId,incElId,scope){
   const exp=fullCatBreakdown(entries,'expense').slice(0,8);
   const maxExp=exp[0]?.amt||1;
-  document.getElementById('alltime-exp-cats').innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30','expense',entries,'alltime')).join(''):'<div class="no-entries">No expenses yet.</div>';
+  document.getElementById(expElId).innerHTML=exp.length?exp.map(c=>breakdownRowHTML(c,maxExp,'#F0997B','#D85A30','expense',entries,scope)).join(''):'<div class="no-entries">No expenses yet.</div>';
   const inc=fullCatBreakdown(entries,'income').slice(0,8);
   const maxInc=inc[0]?.amt||1;
-  document.getElementById('alltime-inc-cats').innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',entries,'alltime')).join(''):'<div class="no-entries">No income yet.</div>';
+  document.getElementById(incElId).innerHTML=inc.length?inc.map(c=>breakdownRowHTML(c,maxInc,'#5DCAA5','#1D9E75','income',entries,scope)).join(''):'<div class="no-entries">No income yet.</div>';
+}
+function renderAllTimeCategories(entries){
+  renderCategoryBreakdown(entries,'alltime-exp-cats','alltime-inc-cats','alltime');
+}
+
+// ── Freelance-years (2024+) deep dive ───────────────────────────────────────
+function yearlyAverages(yt){
+  const now=new Date();
+  const thisYear=now.getFullYear();
+  const monthsElapsed=now.getMonth()+1;
+  return yt.map(y=>{
+    const months=y.year===thisYear?monthsElapsed:12;
+    return {year:y.year,avgIncome:y.income/months,avgProfit:y.profit/months,partial:y.year===thisYear};
+  });
+}
+function renderYearlyAverages(yt){
+  const avgs=yearlyAverages(yt);
+  const el=document.getElementById('yearly-averages');
+  if(!avgs.length){ el.innerHTML='<div class="no-entries">No data yet.</div>'; return; }
+  el.innerHTML=avgs.map(a=>`<div class="bar-row"><div style="min-width:80px;font-size:12px;color:#6B6A66">${a.year}${a.partial?' (pace)':''}</div><div style="flex:1;font-size:12px;color:#6B6A66">${fmt(a.avgIncome)}/mo income</div><div style="font-size:13px;font-weight:600;min-width:110px;text-align:right;color:${a.avgProfit>=0?'#1D9E75':'#D85A30'}">${a.avgProfit<0?'-':''}${fmt(a.avgProfit)}/mo profit</div></div>`).join('');
+}
+
+function growthTrajectory(yt){
+  const now=new Date();
+  const thisYear=now.getFullYear();
+  const monthsElapsed=now.getMonth()+1;
+  const annualized=yt.map(y=>({year:y.year,runRate:y.year===thisYear?(y.income/monthsElapsed)*12:y.income,partial:y.year===thisYear}));
+  const transitions=[];
+  for(let i=1;i<annualized.length;i++){
+    const a=annualized[i-1],b=annualized[i];
+    transitions.push({from:a.year,to:b.year,pct:pctChange(b.runRate,a.runRate),partial:b.partial});
+  }
+  return transitions;
+}
+function renderGrowthTrajectory(yt){
+  const trans=growthTrajectory(yt);
+  const el=document.getElementById('growth-trajectory');
+  if(!trans.length){ el.innerHTML='<div class="no-entries">Need at least two years to compare.</div>'; return; }
+  el.innerHTML=trans.map(t=>{
+    const color=t.pct>=0?'#1D9E75':'#D85A30';
+    const label=t.partial?' (annualized pace)':'';
+    return `<div class="bar-row"><div style="flex:1;font-size:12px;color:#6B6A66">${t.from} → ${t.to}${label}</div><div style="font-size:13px;font-weight:600;color:${color}">${trendArrow(t.pct)} ${t.pct>=0?'+':''}${t.pct}%</div></div>`;
+  }).join('');
+}
+
+function renderFreelanceClients(entries){
+  const scoped=entries.filter(e=>new Date(e.date).getFullYear()>=COMPARISON_START_YEAR);
+  document.getElementById('freelance-clients').innerHTML=clientRowsHTML(topClientsFor(scoped));
+}
+function renderFreelanceCategories(entries){
+  const scoped=entries.filter(e=>new Date(e.date).getFullYear()>=COMPARISON_START_YEAR);
+  renderCategoryBreakdown(scoped,'freelance-exp-cats','freelance-inc-cats','freelance');
+}
+
+function concentrationByYear(entries){
+  const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))].filter(y=>y>=COMPARISON_START_YEAR).sort();
+  return years.map(y=>{
+    const ye=entries.filter(e=>new Date(e.date).getFullYear()===y);
+    const cc=clientConcentration(ye);
+    return {year:y,topClient:cc.top3[0]?.client||'—',topPct:cc.topPct};
+  });
+}
+function renderConcentrationByYear(entries){
+  const rows=concentrationByYear(entries);
+  const el=document.getElementById('concentration-by-year');
+  if(!rows.length){ el.innerHTML='<div class="no-entries">No data yet.</div>'; return; }
+  el.innerHTML=rows.map(r=>{
+    const color=r.topPct>=50?'#D85A30':'#6B6A66';
+    return `<div class="bar-row"><div style="min-width:60px;font-size:12px;color:#6B6A66">${r.year}</div><div style="flex:1;font-size:12px;color:#6B6A66">${r.topClient}</div><div style="font-size:13px;font-weight:600;color:${color}">${r.topPct}%</div></div>`;
+  }).join('');
 }
 
 function setReportView(v){
@@ -813,6 +907,12 @@ function renderAllTimeReportView(entries){
   renderIncomeTrend(yt);
   renderAllTimeClients(entries);
   renderAllTimeCategories(entries);
+
+  renderYearlyAverages(yt);
+  renderGrowthTrajectory(yt);
+  renderFreelanceClients(entries);
+  renderFreelanceCategories(entries);
+  renderConcentrationByYear(entries);
 }
 
 function renderByYearReportView(entries){
