@@ -28,7 +28,11 @@ function parseEntry(text) {
   const lower = text.toLowerCase();
   const today = new Date().toISOString().split('T')[0];
 
-  const amountMatch = text.match(/\d+(\.\d+)?/);
+  // Prefer the LAST number in the text as the amount — item names/store names
+  // often contain leading digits (e.g. "711 protein tea 28"), and this bot's
+  // own convention is always amount-after-description.
+  const numberMatches = [...text.matchAll(/\d+(\.\d+)?/g)];
+  const amountMatch = numberMatches.length ? numberMatches[numberMatches.length - 1] : null;
   const amount = amountMatch ? parseFloat(amountMatch[0]) : 0;
 
   const incomeSignals = [
@@ -90,7 +94,12 @@ function parseEntry(text) {
     else cat = 'Misc';
   }
 
-  const desc = text.replace(/\d+(\.\d+)?/, '').replace(/\s+/g, ' ').trim() || text;
+  // Strip only the matched amount occurrence, not the first number in the
+  // string — earlier numbers (store names, product codes) stay in the desc.
+  const descRaw = amountMatch
+    ? text.slice(0, amountMatch.index) + text.slice(amountMatch.index + amountMatch[0].length)
+    : text;
+  const desc = descRaw.replace(/\s+/g, ' ').trim() || text;
   const clientWord = words.find((w, i) => i > 0 && /^[A-Z][a-zA-Z]+$/.test(w)) || '';
 
   return {
@@ -225,6 +234,7 @@ async function sendConfirmation(ctx, entry, editExisting = false) {
 
   const keyboard = Markup.inlineKeyboard([
     [Markup.button.callback('✓ Log it', 'confirm'), Markup.button.callback('✗ Cancel', 'cancel')],
+    [Markup.button.callback('💰 Amount', 'edit_amount'), Markup.button.callback('📝 Description', 'edit_desc')],
     [Markup.button.callback('✏️ Category', 'pick_cat'), Markup.button.callback(clientBtn, 'edit_client')],
     [Markup.button.callback('📅 Change date', 'edit_date'), Markup.button.callback(switchLabel, 'switch_type')],
   ]);
@@ -391,6 +401,28 @@ bot.on('text', async ctx => {
     return;
   }
 
+  if (state && state.stage === 'edit_amount') {
+    const amount = parseFloat(text.replace(/[^0-9.]/g, ''));
+    if (!amount || isNaN(amount)) {
+      await ctx.reply('Just the number please — e.g. "28"');
+      return;
+    }
+    state.entry.amount = amount;
+    await sendConfirmation(ctx, state.entry);
+    return;
+  }
+
+  if (state && state.stage === 'edit_desc') {
+    const desc = text.trim().slice(0, 60);
+    if (!desc) {
+      await ctx.reply('Description can\'t be empty — try again.');
+      return;
+    }
+    state.entry.desc = desc;
+    await sendConfirmation(ctx, state.entry);
+    return;
+  }
+
   ctx.sendChatAction('typing');
 
   let entry;
@@ -493,6 +525,22 @@ bot.action('edit_date', async ctx => {
     `Current date: *${state.entry.date}*\n\nWhat date should this be? e.g.\n• yesterday\n• 2 days ago\n• Jul 7\n• 7/7`,
     { parse_mode: 'Markdown' }
   );
+});
+
+bot.action('edit_amount', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await setSession(ctx.from.id, { ...state, stage: 'edit_amount' });
+  await ctx.reply(`Current amount: *${fmtHKD(state.entry.amount)}*\n\nWhat's the correct amount? Just the number, e.g. "28"`, { parse_mode: 'Markdown' });
+});
+
+bot.action('edit_desc', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.entry) return ctx.reply('Session expired — please try again.');
+  await setSession(ctx.from.id, { ...state, stage: 'edit_desc' });
+  await ctx.reply(`Current description: *${state.entry.desc}*\n\nWhat should it say instead?`, { parse_mode: 'Markdown' });
 });
 
 // Category picker — one handler per cat code
