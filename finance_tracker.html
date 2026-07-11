@@ -254,6 +254,7 @@
 
     <div id="report-view-investments" style="display:none">
       <div class="section-title">Portfolio holdings</div>
+      <div class="summary-msg">Enter quantity and average cost per share/coin in USD — value, cost, and gain/loss below are converted to HKD at a fixed ~7.8 rate (the market price shown per row stays in USD for reference).</div>
       <div class="summary-msg" id="investments-msg-top"></div>
       <div class="entries-list" id="investments-table"></div>
       <div class="btn-row" style="justify-content:flex-start;margin-top:10px">
@@ -298,6 +299,7 @@
 const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 const INVESTMENTS_API = 'https://finance-tracker-anna-li.vercel.app/api/investments';
 const PRICES_API = 'https://finance-tracker-anna-li.vercel.app/api/prices';
+const USD_TO_HKD = 7.8; // HKD is pegged to USD (7.75-7.85 band) — fixed rate is close enough
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie','Entertainment','CD/Vinyl','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
@@ -921,40 +923,40 @@ function setReportView(v){
 // ── Investments ──────────────────────────────────────────────────────────────
 function investmentRowHTML(item,priceData){
   const price=priceData?.price;
-  const value=price!=null?price*item.quantity:null;
-  const cost=item.avgCost*item.quantity;
-  const gain=value!=null?value-cost:null;
-  const gainPct=(cost>0&&gain!=null)?Math.round(gain/cost*100):null;
-  const gainColor=gain==null?'#6B6A66':gain>=0?'#1D9E75':'#D85A30';
-  const gainText=gain!=null?(gain<0?'-':'+')+fmt(Math.abs(gain))+(gainPct!=null?` (${gainPct>=0?'+':''}${gainPct}%)`:''):(price!=null?'no cost basis set':'price unavailable');
+  const valueHKD=price!=null?price*item.quantity*USD_TO_HKD:null;
+  const costHKD=item.avgCost*item.quantity*USD_TO_HKD;
+  const gainHKD=valueHKD!=null?valueHKD-costHKD:null;
+  const gainPct=(costHKD>0&&gainHKD!=null)?Math.round(gainHKD/costHKD*100):null;
+  const gainColor=gainHKD==null?'#6B6A66':gainHKD>=0?'#1D9E75':'#D85A30';
+  const gainText=gainHKD!=null?(gainHKD<0?'-':'+')+fmt(Math.abs(gainHKD))+(gainPct!=null?` (${gainPct>=0?'+':''}${gainPct}%)`:''):(price!=null?'no cost basis set':'price unavailable');
   return `<div class="entry-row" style="flex-direction:column;align-items:stretch;gap:8px">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div><span style="font-weight:600;font-size:14px">${item.symbol}</span> <span style="font-size:12px;color:#6B6A66">${item.name}</span></div>
       <div style="text-align:right">
-        <div style="font-size:14px;font-weight:600">${value!=null?fmt(value):'—'}</div>
+        <div style="font-size:14px;font-weight:600">${valueHKD!=null?fmt(valueHKD):'—'}</div>
         <div style="font-size:11px;color:${gainColor}">${gainText}</div>
       </div>
     </div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <label style="font-size:11px;color:#6B6A66">Qty <input type="number" id="inv-qty-${item.symbol}" value="${item.quantity||''}" step="any" min="0" style="width:90px;padding:5px 8px;border:1px solid #DAD8D0;border-radius:6px;font-size:12px;margin-left:4px"/></label>
-      <label style="font-size:11px;color:#6B6A66">Avg cost <input type="number" id="inv-cost-${item.symbol}" value="${item.avgCost||''}" step="any" min="0" style="width:90px;padding:5px 8px;border:1px solid #DAD8D0;border-radius:6px;font-size:12px;margin-left:4px"/></label>
-      <span style="font-size:11px;color:#6B6A66">Price: ${price!=null?fmt(price):'—'}</span>
+      <label style="font-size:11px;color:#6B6A66">Avg cost (USD) <input type="number" id="inv-cost-${item.symbol}" value="${item.avgCost||''}" step="any" min="0" style="width:90px;padding:5px 8px;border:1px solid #DAD8D0;border-radius:6px;font-size:12px;margin-left:4px"/></label>
+      <span style="font-size:11px;color:#6B6A66">Price: ${price!=null?'$'+price.toLocaleString('en-US',{maximumFractionDigits:2})+' USD':'—'}</span>
     </div>
   </div>`;
 }
 function renderInvestments(){
   document.getElementById('investments-table').innerHTML=_holdings.length?_holdings.map(item=>investmentRowHTML(item,_prices[item.symbol])).join(''):'<div class="no-entries">No holdings configured.</div>';
-  let totalValue=0, totalCost=0, anyPriced=false;
+  let totalValueHKD=0, totalCostHKD=0, anyPriced=false;
   _holdings.forEach(item=>{
     const p=_prices[item.symbol]?.price;
-    if(p!=null){ totalValue+=p*item.quantity; anyPriced=true; }
-    totalCost+=item.avgCost*item.quantity;
+    if(p!=null){ totalValueHKD+=p*item.quantity*USD_TO_HKD; anyPriced=true; }
+    totalCostHKD+=item.avgCost*item.quantity*USD_TO_HKD;
   });
-  const totalGain=totalValue-totalCost;
+  const totalGainHKD=totalValueHKD-totalCostHKD;
   document.getElementById('investments-totals').innerHTML=`
-    <div class="metric"><div class="metric-label">Portfolio value</div><div class="metric-value">${anyPriced?fmt(totalValue):'—'}</div></div>
-    <div class="metric"><div class="metric-label">Total invested (cost)</div><div class="metric-value">${fmt(totalCost)}</div></div>
-    <div class="metric"><div class="metric-label">Unrealized gain/loss</div><div class="metric-value" style="color:${totalGain>=0?'#1D9E75':'#D85A30'}">${totalCost>0?(totalGain<0?'-':'+')+fmt(Math.abs(totalGain)):'—'}</div></div>`;
+    <div class="metric"><div class="metric-label">Portfolio value</div><div class="metric-value">${anyPriced?fmt(totalValueHKD):'—'}</div></div>
+    <div class="metric"><div class="metric-label">Total invested (cost)</div><div class="metric-value">${fmt(totalCostHKD)}</div></div>
+    <div class="metric"><div class="metric-label">Unrealized gain/loss</div><div class="metric-value" style="color:${totalGainHKD>=0?'#1D9E75':'#D85A30'}">${totalCostHKD>0?(totalGainHKD<0?'-':'+')+fmt(Math.abs(totalGainHKD)):'—'}</div></div>`;
 }
 async function loadInvestments(){
   document.getElementById('investments-msg-top').textContent='Loading holdings and live prices…';
