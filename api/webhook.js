@@ -14,9 +14,10 @@ const db = admin.firestore();
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
 const EXPENSE_CATS = [
-  'Food & drinks','Transport','Socializing','Entertainment','Beauty & health',
-  'Phone & subscriptions','Books & education','Gifts & treats','Travel',
-  'Shopping','Music & media','Leisure','Utilities','Fees','Family','Misc',
+  'Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie',
+  'Entertainment','CD/Vinyl','Beauty & health','Phone & subscriptions',
+  'Books & education','Gifts & treats','Travel','Shopping','Leisure',
+  'Utilities','Fees','Family','Misc',
 ];
 const INCOME_CATS = [
   'Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate',
@@ -49,7 +50,7 @@ function parseEntry(text) {
     'beauty','salon','hair','spa','nail','massage','skincare',
     'phone','netflix','spotify','subscription','app','wifi','data',
     'shopping','clothes','shirt','dress','shoes','bag','supermarket',
-    'movie','cinema','concert','entertainment','game',
+    'movie','cinema','concert','vinyl','record','entertainment','game',
     'gym','sport','fitness','yoga',
     'hotel','flight','airbnb','travel','trip',
     'book','course','class','tuition',
@@ -77,12 +78,16 @@ function parseEntry(text) {
     else if (/day rate|daily/.test(lower)) cat = 'Freelance day rate';
     else cat = 'Other income';
   } else {
-    if (/taxi|uber|grab|mtr|bus|tram|train|ferry|minibus/.test(lower)) cat = 'Transport';
+    if (/taxi|uber|grab/.test(lower)) cat = 'Uber/Taxi';
+    else if (/mtr|bus|tram|train|ferry|minibus/.test(lower)) cat = 'Transport';
     else if (/lunch|dinner|breakfast|brunch|food|eat|restaurant|cafe|coffee|drink|meal|snack|takeaway/.test(lower)) cat = 'Food & drinks';
     else if (/beauty|salon|hair|spa|nail|massage|skincare/.test(lower)) cat = 'Beauty & health';
     else if (/phone|netflix|spotify|subscription|app|wifi/.test(lower)) cat = 'Phone & subscriptions';
     else if (/shopping|clothes|shirt|dress|shoes|bag|supermarket/.test(lower)) cat = 'Shopping';
-    else if (/movie|cinema|concert|entertainment|game/.test(lower)) cat = 'Entertainment';
+    else if (/concert|gig|festival/.test(lower)) cat = 'Concert';
+    else if (/movie|cinema/.test(lower)) cat = 'Movie';
+    else if (/vinyl|record|\bcd\b/.test(lower)) cat = 'CD/Vinyl';
+    else if (/entertainment|game/.test(lower)) cat = 'Entertainment';
     else if (/gym|sport|fitness|yoga/.test(lower)) cat = 'Leisure';
     else if (/hotel|flight|airbnb|travel|trip/.test(lower)) cat = 'Travel';
     else if (/book|course|class|tuition/.test(lower)) cat = 'Books & education';
@@ -165,10 +170,11 @@ function parseRelativeDate(text) {
 
 // Short code → full category name
 const CAT_MAP = {
-  c_food: 'Food & drinks', c_trans: 'Transport', c_social: 'Socializing',
-  c_ent: 'Entertainment', c_health: 'Beauty & health', c_phone: 'Phone & subscriptions',
+  c_food: 'Food & drinks', c_uber: 'Uber/Taxi', c_trans: 'Transport', c_social: 'Socializing',
+  c_concert: 'Concert', c_movie: 'Movie', c_ent: 'Entertainment', c_cd: 'CD/Vinyl',
+  c_health: 'Beauty & health', c_phone: 'Phone & subscriptions',
   c_edu: 'Books & education', c_gifts: 'Gifts & treats', c_travel: 'Travel',
-  c_shop: 'Shopping', c_music: 'Music & media', c_leisure: 'Leisure',
+  c_shop: 'Shopping', c_leisure: 'Leisure',
   c_util: 'Utilities', c_fees: 'Fees', c_family: 'Family', c_misc: 'Misc',
   c_shoot: 'Shooting', c_video: 'Video editing', c_design: 'Graphic design',
   c_copy: 'Writing/Caption', c_rate: 'Freelance day rate', c_proj: 'Project fee',
@@ -177,12 +183,14 @@ const CAT_MAP = {
 };
 
 const EXPENSE_CAT_BTNS = [
-  ['🍜 Food', 'c_food'], ['🚖 Transport', 'c_trans'],
-  ['🍻 Socializing', 'c_social'], ['🎬 Entertainment', 'c_ent'],
+  ['🍜 Food', 'c_food'], ['🚕 Uber/Taxi', 'c_uber'],
+  ['🚇 Transport', 'c_trans'], ['🍻 Socializing', 'c_social'],
+  ['🎤 Concert', 'c_concert'], ['🎬 Movie', 'c_movie'],
+  ['🎮 Entertainment', 'c_ent'], ['💿 CD/Vinyl', 'c_cd'],
   ['💄 Beauty & health', 'c_health'], ['📱 Phone & subs', 'c_phone'],
   ['📚 Education', 'c_edu'], ['🎁 Gifts & treats', 'c_gifts'],
   ['✈️ Travel', 'c_travel'], ['🛍 Shopping', 'c_shop'],
-  ['🎵 Music & media', 'c_music'], ['🏋️ Leisure', 'c_leisure'],
+  ['🏋️ Leisure', 'c_leisure'],
   ['🔧 Utilities', 'c_util'], ['💸 Fees', 'c_fees'],
   ['👨‍👩‍👧 Family', 'c_family'], ['📦 Misc', 'c_misc'],
 ];

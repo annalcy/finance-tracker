@@ -233,7 +233,7 @@
 const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
-const EXPENSE_CATS = ['Food & drinks','Socializing','Transport','Entertainment','Music & media','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
+const EXPENSE_CATS = ['Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie','Entertainment','CD/Vinyl','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 let currentType='income', selMonth=4, selYear=2026, repYear=2026, chartInst=null, chartInst2=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
@@ -745,13 +745,13 @@ else { document.getElementById('lock-input').focus(); }
 // ── Import CSV ───────────────────────────────────────────────────────────────
 const PCAT_MAP = {
   // expenses
-  'Food':'Food & drinks','Uber/Taxi':'Transport','Transportation':'Transport',
-  'octopus':'Transport','Socializing':'Socializing','concert':'Entertainment',
-  'film':'Entertainment','films':'Entertainment','Health':'Beauty & health',
+  'Food':'Food & drinks','Uber/Taxi':'Uber/Taxi','Transportation':'Transport',
+  'octopus':'Transport','Socializing':'Socializing','concert':'Concert',
+  'film':'Movie','films':'Movie','Health':'Beauty & health',
   'Beauty':'Beauty & health','Phone':'Phone & subscriptions','AI':'Phone & subscriptions',
   'Education':'Books & education','Books':'Books & education',
   'gift or treat':'Gifts & treats','travel':'Travel','stuff':'Shopping',
-  'Clothes':'Shopping','CD':'Music & media','mj':'Leisure',
+  'Clothes':'Shopping','CD':'CD/Vinyl','mj':'Leisure',
   'Utilities':'Utilities','Transfer fee':'Fees',
   // income
   'Salary':'Freelance day rate','Freelance':'Freelance day rate',
