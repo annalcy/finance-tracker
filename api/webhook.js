@@ -13,6 +13,8 @@ const db = admin.firestore();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
+const MONTHLY_BUDGET = 8500;
+
 const EXPENSE_CATS = [
   'Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie',
   'Entertainment','CD/Vinyl','Beauty & health','Phone & subscriptions',
@@ -589,8 +591,20 @@ bot.action('confirm', async ctx => {
 
     await clearSession(ctx.from.id);
     const sign = entry.type === 'income' ? '+' : '-';
+
+    let budgetLine = '';
+    if (entry.type === 'expense') {
+      const ym = newEntry.date.slice(0, 7);
+      const monthTotal = cached
+        .filter(e => e.type === 'expense' && e.date && e.date.startsWith(ym))
+        .reduce((s, e) => s + (e.amount || 0), 0);
+      const pct = Math.round((monthTotal / MONTHLY_BUDGET) * 100);
+      const emoji = pct >= 100 ? '🚨' : pct >= 80 ? '⚠️' : '💰';
+      budgetLine = `\n\n${emoji} This month: ${fmtHKD(monthTotal)} / ${fmtHKD(MONTHLY_BUDGET)} (${pct}%)`;
+    }
+
     await ctx.editMessageText(
-      `✅ Logged: *${entry.desc}* ${sign}${fmtHKD(entry.amount)}`,
+      `✅ Logged: *${entry.desc}* ${sign}${fmtHKD(entry.amount)}${budgetLine}`,
       { parse_mode: 'Markdown' }
     );
     ctx.answerCbQuery('Saved!');

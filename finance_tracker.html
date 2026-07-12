@@ -131,6 +131,16 @@
     <div class="month-pills" id="overview-year-pills"></div>
     <div class="month-pills" id="overview-month-pills"></div>
     <div class="metrics" id="metrics"></div>
+    <div class="form-card" id="budget-card" style="margin-bottom:1.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <div class="section-title" style="margin-bottom:0">Monthly budget</div>
+        <div id="budget-label" style="font-size:12px;color:#6B6A66"></div>
+      </div>
+      <div style="height:8px;background:#E4E2DA;border-radius:4px;overflow:hidden">
+        <div id="budget-bar" style="height:8px;border-radius:4px;transition:width .3s"></div>
+      </div>
+      <div id="budget-note" style="font-size:12px;color:#6B6A66;margin-top:8px"></div>
+    </div>
     <div class="section-title">All entries this month</div>
     <div class="entries-list" id="recent-entries"></div>
   </div>
@@ -309,6 +319,7 @@ const USD_TO_HKD = 7.8; // HKD is pegged to USD (7.75-7.85 band) — fixed rate 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
 const EXPENSE_CATS = ['Food & drinks','Uber/Taxi','Transport','Socializing','Concert','Movie','Entertainment','CD/Vinyl','Shopping','Beauty & health','Books & education','Phone & subscriptions','Travel','Gifts & treats','Leisure','Utilities','Fees','Family','Misc'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHLY_BUDGET = 8500;
 const COMPARISON_START_YEAR = 2024; // pre-freelance years are kept in lifetime totals but excluded from year-vs-year comparisons
 const _todayParts=today().split('-').map(Number);
 let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null;
@@ -622,6 +633,19 @@ function renderOverview(){
     <div class="metric"><div class="metric-label">Expenses</div><div class="metric-value" style="color:#D85A30">${fmt(exp)}</div></div>
     <div class="metric"><div class="metric-label">Net profit</div><div class="metric-value" style="color:${p>=0?'#1D9E75':'#D85A30'}">${p<0?'-':''}${fmt(p)}</div></div>`;
   document.getElementById('recent-entries').innerHTML=me.length?me.map(e=>entryHTML(e)).join(''):'<div class="no-entries">No entries this month.</div>';
+  renderBudget(exp);
+}
+
+function renderBudget(exp){
+  const pct=Math.round(exp/MONTHLY_BUDGET*100);
+  const barPct=Math.min(pct,100);
+  const color=pct>=100?'#D85A30':pct>=80?'#C99A2E':'#1D9E75';
+  document.getElementById('budget-bar').style.cssText=`height:8px;border-radius:4px;width:${barPct}%;background:${color}`;
+  document.getElementById('budget-label').textContent=`${fmt(exp)} / ${fmt(MONTHLY_BUDGET)} (${pct}%)`;
+  const note=document.getElementById('budget-note');
+  if(pct>=100){ note.textContent=`🚨 Over budget by ${fmt(exp-MONTHLY_BUDGET)} this month.`; note.style.color='#D85A30'; }
+  else if(pct>=80){ note.textContent=`⚠️ ${fmt(MONTHLY_BUDGET-exp)} left before you hit the limit.`; note.style.color='#7A5B14'; }
+  else{ note.textContent=`${fmt(MONTHLY_BUDGET-exp)} left this month.`; note.style.color='#6B6A66'; }
 }
 
 function renderRecords(){
