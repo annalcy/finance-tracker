@@ -4,6 +4,7 @@ const {
   MONTHLY_BUDGET, EXPENSE_CATS, INCOME_CATS, CAT_MAP,
   EXPENSE_CAT_BTNS, INCOME_CAT_BTNS,
 } = require('../lib/constants');
+const { computeGoalProgress, currentYearMonth, newlyCrossedMilestone } = require('../lib/goalCalc');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -149,6 +150,26 @@ function parseRelativeDate(text) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
 
   return null;
+}
+
+// Due dates are almost always in the future — "in 14 days" / "30 days" —
+// unlike entry dates which are almost always in the past. Falls back to
+// parseRelativeDate's absolute formats (Jul 30, 30/7, ISO) for the rest.
+// Returns: null = explicitly no due date, false = couldn't parse (ask again),
+// otherwise an ISO date string.
+function parseDueDate(text) {
+  const lower = text.toLowerCase().trim();
+  if (lower === 'none' || lower === 'no due date' || lower === 'skip') return null;
+
+  const forwardDays = lower.match(/^(?:in\s+)?(\d+)\s*days?$/);
+  if (forwardDays) {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + parseInt(forwardDays[1]));
+    return d.toISOString().split('T')[0];
+  }
+
+  return parseRelativeDate(text) || false;
 }
 
 // ── Firestore-backed session (survives serverless cold starts) ─────────────────
@@ -316,6 +337,66 @@ bot.command('recent', async ctx => {
   }
 });
 
+bot.command('goal', async ctx => {
+  try {
+    const p = await computeGoalProgress();
+    if (!p) return ctx.reply('No income goal set for this year yet.');
+    const monthLabel = new Date().toLocaleString('en-US', { month: 'long' });
+
+    let msg =
+      `🎯 *${monthLabel} progress*\n\n` +
+      `${fmtHKD(p.earnedThisMonth)} earned / ${fmtHKD(p.monthlyTarget)} target — ${p.pctProgress}%\n` +
+      `${fmtHKD(p.remaining)} remaining\n\n` +
+      `📅 Annual: ${fmtHKD(p.earnedThisYear)} / ${fmtHKD(p.annualGoal)} (${p.annualPctProgress}%)`;
+
+    if (p.behindTarget) {
+      msg += `\n\n⚠️ You're ${fmtHKD(p.behindAmount)} behind ${monthLabel}'s pace — ${p.weeksLeftInMonth} weeks left.`;
+      if (p.unpaidInvoices.length) {
+        const clients = [...new Set(p.unpaidInvoices.map(i => i.client))].join(' and ');
+        msg += `\n\nYou have ${fmtHKD(p.unpaidTotal)} outstanding from ${clients} — follow up?`;
+      }
+    }
+
+    ctx.reply(msg, { parse_mode: 'Markdown' });
+  } catch (e) {
+    console.error('goal command error:', e);
+    ctx.reply('Could not fetch your goal progress right now. Try again in a moment.');
+  }
+});
+
+bot.command('invoices', async ctx => {
+  try {
+    const snap = await db.collection('anna_invoices').where('status', '==', 'unpaid').get();
+    if (!snap.docs.length) return ctx.reply('No outstanding invoices. 🎉');
+    const today = new Date().toISOString().split('T')[0];
+    const invoices = snap.docs.map(d => {
+      const inv = d.data();
+      const daysOverdue = inv.dueDate && inv.dueDate < today
+        ? Math.floor((new Date(today) - new Date(inv.dueDate)) / 86400000)
+        : 0;
+      return { ...inv, daysOverdue };
+    }).sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+    const lines = invoices.map(i => {
+      const overdueNote = i.daysOverdue > 0 ? ` — ⚠️ ${i.daysOverdue}d overdue` : i.dueDate ? ` — due ${i.dueDate}` : '';
+      return `${fmtHKD(i.amount)}  ${i.client}${overdueNote}`;
+    });
+    const total = invoices.reduce((s, i) => s + (i.amount || 0), 0);
+    ctx.reply(
+      `*Outstanding invoices* (${fmtHKD(total)} total)\n\n${lines.join('\n')}\n\n_Use /addinvoice to add a new one._`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e) {
+    console.error('invoices command error:', e);
+    ctx.reply('Could not fetch invoices right now. Try again in a moment.');
+  }
+});
+
+bot.command('addinvoice', async ctx => {
+  await setSession(ctx.from.id, { flow: 'invoice', stage: 'invoice_client', invoice: {} });
+  await ctx.reply('Which client is this invoice for?');
+});
+
 // ── Main text handler ──────────────────────────────────────────────────────────
 bot.on('text', async ctx => {
   const text = ctx.message.text.trim();
@@ -323,6 +404,54 @@ bot.on('text', async ctx => {
 
   const userId = ctx.from.id;
   const state = await getSession(userId);
+
+  if (state && state.flow === 'invoice') {
+    if (state.stage === 'invoice_client') {
+      state.invoice.client = text.trim();
+      state.stage = 'invoice_amount';
+      await setSession(userId, state);
+      await ctx.reply(`How much (HKD)?`);
+      return;
+    }
+    if (state.stage === 'invoice_amount') {
+      const amount = parseFloat(text.replace(/[^0-9.]/g, ''));
+      if (!amount || isNaN(amount)) {
+        await ctx.reply('Just the number please — e.g. "5000"');
+        return;
+      }
+      state.invoice.amount = amount;
+      state.stage = 'invoice_duedate';
+      await setSession(userId, state);
+      await ctx.reply(`When's it due? e.g. "in 14 days", "Jul 30", "30/7", or "none"`);
+      return;
+    }
+    if (state.stage === 'invoice_duedate') {
+      const dueDate = parseDueDate(text.trim());
+      if (dueDate === false) {
+        await ctx.reply('Didn\'t get that — try "in 14 days", "Jul 30", "30/7", or "none".');
+        return;
+      }
+      const id = Date.now();
+      const invoice = {
+        id,
+        client: state.invoice.client,
+        amount: state.invoice.amount,
+        issueDate: new Date().toISOString().split('T')[0],
+        dueDate,
+        status: 'unpaid',
+        paidDate: null,
+        linkedEntryId: null,
+        notes: '',
+        followUpSentAt: null,
+        createdAt: Date.now(),
+      };
+      await db.collection('anna_invoices').doc(String(id)).set(invoice);
+      await clearSession(userId);
+      const dueLine = dueDate ? `, due ${dueDate}` : '';
+      await ctx.reply(`✅ Invoice logged: ${fmtHKD(invoice.amount)} from *${invoice.client}*${dueLine}`, { parse_mode: 'Markdown' });
+      return;
+    }
+  }
 
   if (state && state.stage === 'need_amount') {
     const amount = parseFloat(text.replace(/[^0-9.]/g, ''));
@@ -554,10 +683,81 @@ bot.action('confirm', async ctx => {
       { parse_mode: 'Markdown' }
     );
     ctx.answerCbQuery('Saved!');
+
+    // Milestone + invoice follow-ups only apply to income — fire as separate
+    // messages so they don't block or clutter the "Logged" receipt above.
+    if (entry.type === 'income') {
+      await checkMilestone(ctx, newEntry, cached);
+      await checkInvoiceMatch(ctx, newEntry);
+    }
   } catch (err) {
     console.error('save error:', err);
     ctx.answerCbQuery('Error saving — try again.');
   }
+});
+
+async function checkMilestone(ctx, newEntry, cachedEntries) {
+  try {
+    const { year } = currentYearMonth();
+    const goalDoc = await db.collection('anna_income_goals').doc(year).get();
+    if (!goalDoc.exists) return;
+    const goal = goalDoc.data();
+
+    const yearIncome = cachedEntries.filter(e => e.type === 'income' && e.date && e.date.startsWith(year));
+    const incomeAfter = yearIncome.reduce((s, e) => s + (e.amount || 0), 0);
+    const incomeBefore = incomeAfter - newEntry.amount;
+
+    const crossed = newlyCrossedMilestone(goal.annualGoal, goal.milestones || {}, incomeBefore, incomeAfter);
+    if (!crossed) return;
+
+    await db.collection('anna_income_goals').doc(year).set(
+      { milestones: { ...(goal.milestones || {}), [crossed]: true } },
+      { merge: true }
+    );
+
+    const emoji = crossed >= 100 ? '🎉🎉🎉' : crossed >= 75 ? '🎉🎊' : '🎉';
+    await ctx.reply(`${emoji} You just hit ${crossed}% of your ${year} income goal (${fmtHKD(goal.annualGoal)})!`);
+  } catch (err) {
+    console.error('milestone check error:', err);
+  }
+}
+
+async function checkInvoiceMatch(ctx, newEntry) {
+  try {
+    if (!newEntry.client) return;
+    const snap = await db.collection('anna_invoices').where('status', '==', 'unpaid').get();
+    const match = snap.docs.find(d => (d.data().client || '').toLowerCase() === newEntry.client.toLowerCase());
+    if (!match) return;
+    const invoice = match.data();
+    await ctx.reply(
+      `Mark invoice from *${invoice.client}* (${fmtHKD(invoice.amount)}) as paid?`,
+      { parse_mode: 'Markdown', ...Markup.inlineKeyboard([
+        [Markup.button.callback('✓ Yes, mark paid', `invoice_paid_${invoice.id}`), Markup.button.callback('✗ Not yet', 'invoice_paid_dismiss')],
+      ]) }
+    );
+  } catch (err) {
+    console.error('invoice match check error:', err);
+  }
+}
+
+bot.action(/^invoice_paid_(\d+)$/, async ctx => {
+  await ctx.answerCbQuery();
+  const id = ctx.match[1];
+  try {
+    await db.collection('anna_invoices').doc(id).set(
+      { status: 'paid', paidDate: new Date().toISOString().split('T')[0] },
+      { merge: true }
+    );
+    await ctx.editMessageText('✅ Invoice marked as paid.');
+  } catch (err) {
+    console.error('mark invoice paid error:', err);
+    await ctx.editMessageText('Could not update the invoice — try /invoices to manage it manually.');
+  }
+});
+
+bot.action('invoice_paid_dismiss', async ctx => {
+  await ctx.answerCbQuery();
+  await ctx.editMessageText('OK, left as unpaid.');
 });
 
 bot.action('cancel', async ctx => {

@@ -131,6 +131,16 @@
     <div class="month-pills" id="overview-year-pills"></div>
     <div class="month-pills" id="overview-month-pills"></div>
     <div class="metrics" id="metrics"></div>
+    <div class="form-card" id="goal-card" style="margin-bottom:1.5rem;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <div class="section-title" style="margin-bottom:0">Income goal</div>
+        <div id="goal-label" style="font-size:12px;color:#6B6A66"></div>
+      </div>
+      <div style="height:8px;background:#E4E2DA;border-radius:4px;overflow:hidden">
+        <div id="goal-bar" style="height:8px;border-radius:4px;transition:width .3s"></div>
+      </div>
+      <div id="goal-note" style="font-size:12px;color:#6B6A66;margin-top:8px"></div>
+    </div>
     <div class="form-card" id="budget-card" style="margin-bottom:1.5rem">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
         <div class="section-title" style="margin-bottom:0">Monthly budget</div>
@@ -140,6 +150,10 @@
         <div id="budget-bar" style="height:8px;border-radius:4px;transition:width .3s"></div>
       </div>
       <div id="budget-note" style="font-size:12px;color:#6B6A66;margin-top:8px"></div>
+    </div>
+    <div class="form-card" id="week-card" style="margin-bottom:1.5rem;display:none">
+      <div class="section-title" style="margin-bottom:8px">This week</div>
+      <div id="week-body" style="font-size:13px;color:#1A1A18;line-height:1.6"></div>
     </div>
     <div class="section-title">All entries this month</div>
     <div class="entries-list" id="recent-entries"></div>
@@ -190,6 +204,7 @@
       <span class="pill active" data-view="alltime" onclick="setReportView('alltime')">All-time overview</span>
       <span class="pill" data-view="year" onclick="setReportView('year')">By year</span>
       <span class="pill" data-view="investments" onclick="setReportView('investments')">Investments</span>
+      <span class="pill" data-view="invoices" onclick="setReportView('invoices')">Invoices</span>
     </div>
 
     <div id="report-view-alltime">
@@ -280,6 +295,12 @@
       <div class="metrics" style="margin-top:1.25rem" id="investments-totals"></div>
       <div class="data-note" style="margin-top:1rem">This tracks your portfolio separately from your freelance cash flow above — money moved into stocks/crypto isn't logged as an expense, so this is additive to (not already included in) your lifetime profit figures.</div>
     </div>
+
+    <div id="report-view-invoices" style="display:none">
+      <div class="section-title">Outstanding invoices</div>
+      <div id="invoices-msg" class="summary-msg"></div>
+      <div class="entries-list" id="invoices-table"></div>
+    </div>
   </div>
 
   <div id="page-import" class="page">
@@ -314,6 +335,8 @@
 const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 const INVESTMENTS_API = 'https://finance-tracker-anna-li.vercel.app/api/investments';
 const PRICES_API = 'https://finance-tracker-anna-li.vercel.app/api/prices';
+const GOAL_API = 'https://finance-tracker-anna-li.vercel.app/api/goal';
+const INVOICES_API = 'https://finance-tracker-anna-li.vercel.app/api/invoices';
 const USD_TO_HKD = 7.8; // HKD is pegged to USD (7.75-7.85 band) — fixed rate is close enough
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
@@ -327,6 +350,7 @@ let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
+let _goal=null, _invoices=[];
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -531,7 +555,11 @@ function initApp(){
   el.textContent='Loading…';
   document.body.appendChild(el);
   loadEntries();
+  loadGoal();
+  loadInvoices();
   setInterval(loadEntries,300000);
+  setInterval(loadGoal,300000);
+  setInterval(loadInvoices,300000);
 }
 function fmt(n){return '$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});}
 function today(){return new Date().toISOString().split('T')[0];}
@@ -634,6 +662,7 @@ function renderOverview(){
     <div class="metric"><div class="metric-label">Net profit</div><div class="metric-value" style="color:${p>=0?'#1D9E75':'#D85A30'}">${p<0?'-':''}${fmt(p)}</div></div>`;
   document.getElementById('recent-entries').innerHTML=me.length?me.map(e=>entryHTML(e)).join(''):'<div class="no-entries">No entries this month.</div>';
   renderBudget(exp);
+  renderWeekCard();
 }
 
 function renderBudget(exp){
@@ -646,6 +675,99 @@ function renderBudget(exp){
   if(pct>=100){ note.textContent=`🚨 Over budget by ${fmt(exp-MONTHLY_BUDGET)} this month.`; note.style.color='#D85A30'; }
   else if(pct>=80){ note.textContent=`⚠️ ${fmt(MONTHLY_BUDGET-exp)} left before you hit the limit.`; note.style.color='#7A5B14'; }
   else{ note.textContent=`${fmt(MONTHLY_BUDGET-exp)} left this month.`; note.style.color='#6B6A66'; }
+}
+
+// ── Income goal ────────────────────────────────────────────────────────────────
+async function loadGoal(){
+  try{
+    const res=await fetch(GOAL_API);
+    _goal=res.ok?await res.json():null;
+  }catch(e){
+    _goal=null;
+  }
+  renderGoalCard();
+  renderWeekCard();
+}
+function renderGoalCard(){
+  const card=document.getElementById('goal-card');
+  if(!_goal){ card.style.display='none'; return; }
+  card.style.display='';
+  const pct=Math.min(_goal.pctProgress,100);
+  const color=_goal.behindTarget?'#C99A2E':'#1D9E75';
+  document.getElementById('goal-bar').style.cssText=`height:8px;border-radius:4px;width:${pct}%;background:${color}`;
+  document.getElementById('goal-label').textContent=`${fmt(_goal.earnedThisMonth)} / ${fmt(_goal.monthlyTarget)} (${_goal.pctProgress}%)`;
+  const note=document.getElementById('goal-note');
+  let text=`${fmt(_goal.remaining)} remaining this month · Annual: ${fmt(_goal.earnedThisYear)} / ${fmt(_goal.annualGoal)} (${_goal.annualPctProgress}%)`;
+  if(_goal.behindTarget){
+    text=`⚠️ ${fmt(_goal.behindAmount)} behind pace — ${_goal.weeksLeftInMonth} weeks left. `+text;
+    if(_goal.unpaidInvoices&&_goal.unpaidInvoices.length){
+      const clients=[...new Set(_goal.unpaidInvoices.map(i=>i.client))].join(' and ');
+      text+=` · ${fmt(_goal.unpaidTotal)} outstanding from ${clients}`;
+    }
+  }
+  note.textContent=text;
+  note.style.color=_goal.behindTarget?'#7A5B14':'#6B6A66';
+}
+
+// ── This week (read-only overview: income pace + invoices due/overdue) ─────────
+function getWeekBounds(d=new Date()){
+  const day=d.getDay();
+  const diffToMonday=day===0?-6:1-day;
+  const monday=new Date(d); monday.setDate(d.getDate()+diffToMonday); monday.setHours(0,0,0,0);
+  const sunday=new Date(monday); sunday.setDate(monday.getDate()+6); sunday.setHours(23,59,59,999);
+  return {monday,sunday};
+}
+function renderWeekCard(){
+  const card=document.getElementById('week-card');
+  const entries=getEntries();
+  if(!entries.length){ card.style.display='none'; return; }
+  const {monday,sunday}=getWeekBounds();
+  const weekIncome=entries.filter(e=>e.type==='income'&&new Date(e.date)>=monday&&new Date(e.date)<=sunday).reduce((s,e)=>s+e.amount,0);
+  let body=`💚 ${fmt(weekIncome)} earned this week`;
+  if(_goal){
+    const daysInMonth=new Date(monday.getFullYear(),monday.getMonth()+1,0).getDate();
+    const weeklyPace=Math.round(_goal.monthlyTarget*7/daysInMonth);
+    body+=` <span style="color:#6B6A66">(pace target: ${fmt(weeklyPace)})</span>`;
+  }
+  const dueThisWeek=(_invoices||[]).filter(i=>i.status==='unpaid'&&i.dueDate&&new Date(i.dueDate)>=monday&&new Date(i.dueDate)<=sunday);
+  const overdue=(_invoices||[]).filter(i=>i.status==='unpaid'&&i.daysOverdue>0);
+  if(dueThisWeek.length) body+=`<br>📅 ${dueThisWeek.length} invoice${dueThisWeek.length>1?'s':''} due this week (${fmt(dueThisWeek.reduce((s,i)=>s+i.amount,0))})`;
+  if(overdue.length) body+=`<br>⚠️ ${overdue.length} invoice${overdue.length>1?'s':''} overdue (${fmt(overdue.reduce((s,i)=>s+i.amount,0))})`;
+  document.getElementById('week-body').innerHTML=body;
+  card.style.display='';
+}
+
+// ── Invoices ─────────────────────────────────────────────────────────────────
+async function loadInvoices(){
+  const msg=document.getElementById('invoices-msg');
+  if(msg) msg.textContent='Loading…';
+  try{
+    const res=await fetch(INVOICES_API);
+    _invoices=await res.json();
+    if(msg) msg.textContent='';
+  }catch(e){
+    if(msg) msg.textContent='Could not load invoices — check your connection.';
+  }
+  renderInvoicesView();
+  renderWeekCard();
+}
+function renderInvoicesView(){
+  const wrap=document.getElementById('invoices-table');
+  if(!wrap) return;
+  if(!_invoices.length){ wrap.innerHTML='<div class="no-entries">No invoices logged yet.</div>'; return; }
+  wrap.innerHTML=_invoices.map(i=>{
+    const badge=i.status==='paid'
+      ?`<span class="badge-new">Paid</span>`
+      :i.daysOverdue>0?`<span class="badge-skip" style="background:#FAECE7;color:#993C1D">${i.daysOverdue}d overdue</span>`
+      :`<span class="badge-skip">${i.dueDate?'Due '+i.dueDate:'No due date'}</span>`;
+    return `<div class="entry-row">
+      <div style="flex:1;min-width:0">
+        <div class="entry-desc">${i.client}</div>
+        <div class="entry-meta">${badge}</div>
+      </div>
+      <div class="entry-amount">${fmt(i.amount)}</div>
+    </div>`;
+  }).join('');
 }
 
 function renderRecords(){
@@ -945,6 +1067,7 @@ function setReportView(v){
   document.getElementById('report-view-alltime').style.display=v==='alltime'?'':'none';
   document.getElementById('report-view-year').style.display=v==='year'?'':'none';
   document.getElementById('report-view-investments').style.display=v==='investments'?'':'none';
+  document.getElementById('report-view-invoices').style.display=v==='invoices'?'':'none';
   document.querySelectorAll('#report-view-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.view===v));
   renderReports();
 }
@@ -1116,6 +1239,7 @@ function renderReports(){
   if(_reportView==='alltime') renderAllTimeReportView(entries);
   else if(_reportView==='year') renderByYearReportView(entries);
   else if(_reportView==='investments') loadInvestments();
+  else if(_reportView==='invoices') loadInvoices();
 }
 
 function showPage(name){
