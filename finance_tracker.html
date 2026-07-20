@@ -121,6 +121,7 @@
   <div class="data-note">This file stores new entries in your browser's local storage on this device. To keep using it across devices, periodically re-export an updated copy from Claude.</div>
   <div class="tabs">
     <button class="tab active" onclick="showPage('overview')">Overview</button>
+    <button class="tab" onclick="showPage('tasks')">Tasks</button>
     <button class="tab" onclick="cancelEdit();showPage('add')">Add entry</button>
     <button class="tab" onclick="showPage('records')">Records</button>
     <button class="tab" onclick="showPage('reports')">Reports</button>
@@ -157,6 +158,12 @@
     </div>
     <div class="section-title">All entries this month</div>
     <div class="entries-list" id="recent-entries"></div>
+  </div>
+
+  <div id="page-tasks" class="page">
+    <div class="section-title">Pending tasks</div>
+    <div id="tasks-msg" class="summary-msg"></div>
+    <div class="entries-list" id="tasks-table"></div>
   </div>
 
   <div id="page-add" class="page">
@@ -337,6 +344,7 @@ const INVESTMENTS_API = 'https://finance-tracker-anna-li.vercel.app/api/investme
 const PRICES_API = 'https://finance-tracker-anna-li.vercel.app/api/prices';
 const GOAL_API = 'https://finance-tracker-anna-li.vercel.app/api/goal';
 const INVOICES_API = 'https://finance-tracker-anna-li.vercel.app/api/invoices';
+const TASKS_API = 'https://finance-tracker-anna-li.vercel.app/api/tasks';
 const USD_TO_HKD = 7.8; // HKD is pegged to USD (7.75-7.85 band) — fixed rate is close enough
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
@@ -350,7 +358,7 @@ let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
-let _goal=null, _invoices=[];
+let _goal=null, _invoices=[], _tasks=[];
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -779,6 +787,41 @@ function renderInvoicesView(){
         <div class="entry-meta">${badge}</div>
       </div>
       <div class="entry-amount">${fmt(i.amount)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Tasks (read-only) ────────────────────────────────────────────────────────
+async function loadTasks(){
+  const msg=document.getElementById('tasks-msg');
+  if(msg) msg.textContent='Loading…';
+  try{
+    const res=await fetch(TASKS_API);
+    _tasks=await res.json();
+    if(msg) msg.textContent='';
+  }catch(e){
+    if(msg) msg.textContent='Could not load tasks — check your connection.';
+  }
+  renderTasksView();
+}
+function renderTasksView(){
+  const wrap=document.getElementById('tasks-table');
+  if(!wrap) return;
+  if(!_tasks.length){ wrap.innerHTML='<div class="no-entries">No pending tasks. 🎉</div>'; return; }
+  wrap.innerHTML=_tasks.map(t=>{
+    const badge=t.deadlineType==='hard'
+      ?`<span class="badge-skip" style="background:#FAECE7;color:#993C1D">🔴 HARD</span>`
+      :`<span class="badge-skip" style="background:#FFF8E8;color:#7A5B14">🟡 SOFT</span>`;
+    let urgency='';
+    if(t.daysUntilDeadline!=null){
+      if(t.daysUntilDeadline<0) urgency=' · <span style="color:#D85A30">⚠️ overdue</span>';
+      else if(t.daysUntilDeadline<=2) urgency=' · <span style="color:#C99A2E">⏰ due soon</span>';
+    }
+    return `<div class="entry-row">
+      <div style="flex:1;min-width:0">
+        <div class="entry-desc">${t.desc}</div>
+        <div class="entry-meta">${badge}${t.client?' · '+t.client:''} · due ${t.deadlineDate||'—'}${urgency}</div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1262,6 +1305,7 @@ function showPage(name){
   document.getElementById('page-'+name).classList.add('active');
   document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim().toLowerCase().includes(name.substring(0,3)))t.classList.add('active');});
   if(name==='overview')renderOverview();
+  if(name==='tasks')loadTasks();
   if(name==='records'){populateRecordFilters(getEntries());renderRecords();}
   if(name==='reports')renderReports();
 }
