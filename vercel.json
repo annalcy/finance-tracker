@@ -2,6 +2,9 @@
   "functions": {
     "api/webhook.js": {
       "maxDuration": 30
+    },
+    "api/ai-insights.js": {
+      "maxDuration": 30
     }
   }
 }

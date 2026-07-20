@@ -258,27 +258,56 @@
   </div>
 
   <div id="page-insights" class="page">
-    <div class="form-card" style="text-align:center">
-      <div id="insights-streak-num" style="font-size:32px;font-weight:700"></div>
+    <!-- 1. AI Analysis -->
+    <div class="form-card" id="insights-ai-card"></div>
+
+    <!-- 2. Streak -->
+    <div class="form-card" style="text-align:center" id="insights-streak-card">
+      <div id="insights-streak-num" style="font-size:36px;font-weight:700"></div>
       <div id="insights-streak-sub" style="font-size:13px;color:#6B6A66;margin-top:4px"></div>
     </div>
 
+    <!-- 3. Deadline Pressure Score -->
+    <div class="section-title" style="margin-top:1.5rem">Current pressure</div>
+    <div class="form-card" id="insights-pressure-card"></div>
+
+    <!-- 4. Overdue Age Tracker -->
+    <div class="section-title" style="margin-top:1.5rem">Overdue — time since deadline</div>
+    <div class="entries-list" id="insights-overdue-list"></div>
+
+    <!-- 5. Time Distribution by Client -->
+    <div class="section-title" style="margin-top:1.5rem">Where your time goes</div>
+    <div class="summary-msg" id="insights-time-dist-sub"></div>
+    <div class="entries-list" id="insights-time-dist"></div>
+
+    <!-- 6. Productivity Pattern -->
+    <div class="section-title" style="margin-top:1.5rem">When you get things done</div>
+    <div class="form-card">
+      <div id="insights-dow-chart"></div>
+      <div class="summary-msg" id="insights-dow-sub" style="margin-top:6px"></div>
+    </div>
+    <div class="form-card" style="margin-top:12px">
+      <div class="entry-meta" style="margin-bottom:6px">Tasks completed per month, last 6 months</div>
+      <div id="insights-trend-chart"></div>
+    </div>
+
+    <!-- 7. Completion Rate -->
     <div class="section-title" style="margin-top:1.5rem">Completion rate</div>
     <div class="month-pills" id="insights-month-pills"></div>
     <div class="form-card" id="insights-completion-card"></div>
 
+    <!-- 8. By Client Breakdown -->
     <div class="section-title" style="margin-top:1.5rem">By client</div>
     <div class="entries-list" id="insights-client-chart"></div>
 
-    <div class="section-title" style="margin-top:1.5rem">Most postponed tasks</div>
+    <!-- 9. Postpone Tracker -->
+    <div class="section-title" style="margin-top:1.5rem">Most postponed</div>
     <div class="entries-list" id="insights-postpone-list"></div>
 
+    <!-- 10. Task Completion Heatmap -->
     <div class="section-title" style="margin-top:1.5rem">Task completion</div>
     <div id="insights-heatmap"></div>
     <div class="summary-msg" id="insights-heatmap-total" style="margin-top:8px"></div>
-
-    <div class="section-title" style="margin-top:1.5rem">Monthly completion history</div>
-    <div class="chart-wrap"><canvas id="insights-monthly-chart" role="img" aria-label="Monthly completed tasks bar chart"></canvas></div>
   </div>
 
   <div id="page-add" class="page">
@@ -478,7 +507,7 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const MONTHLY_BUDGET = 8500;
 const COMPARISON_START_YEAR = 2024; // pre-freelance years are kept in lifetime totals but excluded from year-vs-year comparisons
 const _todayParts=today().split('-').map(Number);
-let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null, chartInst4=null, chartInst5=null;
+let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCategory='finance';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
@@ -487,6 +516,7 @@ let _goal=null, _invoices=[], _tasks=[], _tasksAll=[];
 let _editingTaskId=null, _taskEditType='soft';
 let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calSelectedDay=null;
 let _calAddingTask=false, _addTaskType='soft';
+let _aiAnalysisText=null, _aiAnalysisTime=null, _aiAnalysisLoading=false, _aiAnalysisError=false, _aiAnalysisFetchedOnce=false;
 let _insightsMonth=_todayParts[0]+'-'+String(_todayParts[1]).padStart(2,'0');
 
 const SEED_DATA = [
@@ -1283,6 +1313,19 @@ function renderCalAgenda(byDate,todayStr){
 }
 
 // ── Insights sub-tab ────────────────────────────────────────────────────────
+const AI_INSIGHTS_API = 'https://finance-tracker-anna-li.vercel.app/api/ai-insights';
+const CLIENT_ALIASES = {
+  ck:'CK', drip:'Drip Music', 'drip music':'Drip Music', lawrence:'Lawrence', sony:'Sony',
+  cbeauty:'Cbeauty', momo:'Momo', isnhk:'ISNHK', minizine:'Minizine', interlude:'Interlude', sam:'Sam',
+};
+function normalizeClientName(raw){
+  const s=(raw||'').trim();
+  if(!s) return '(no client)';
+  const key=s.toLowerCase();
+  if(CLIENT_ALIASES[key]) return CLIENT_ALIASES[key];
+  return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+}
+
 function dateStrAddDays(dateStr,delta){
   const d=new Date(dateStr+'T00:00:00Z');
   d.setUTCDate(d.getUTCDate()+delta);
@@ -1300,14 +1343,216 @@ function computeStreak(){
   return streak;
 }
 
-function renderInsightsStreak(){
-  const streak=computeStreak();
-  document.getElementById('insights-streak-num').textContent=streak;
-  document.getElementById('insights-streak-sub').textContent=streak===0
-    ?'No active streak — complete a task today to start one.'
-    :`day${streak===1?'':'s'} in a row with a task completed`;
+// ── 1. AI Analysis ──────────────────────────────────────────────────────────
+function buildAiTaskSummary(){
+  return _tasksAll.map(t=>({
+    description:t.desc,
+    client:t.client||'',
+    deadline:t.deadlineDate||null,
+    status:t.status,
+    estimatedHours:t.estimateMinutes?Math.round(t.estimateMinutes/60*10)/10:null,
+    completedDate:taskDoneDateStr(t),
+    postponeCount:t.postponeCount||0,
+    createdAt:t.createdAt||null,
+  }));
+}
+async function loadAiAnalysis(force){
+  if(_aiAnalysisFetchedOnce && !force){ renderAiAnalysisCard(); return; }
+  _aiAnalysisLoading=true; _aiAnalysisError=false;
+  renderAiAnalysisCard();
+  try{
+    const res=await fetch(AI_INSIGHTS_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tasks:buildAiTaskSummary(),today:today()})});
+    if(!res.ok) throw new Error('bad status');
+    const data=await res.json();
+    _aiAnalysisText=data.text;
+    _aiAnalysisTime=new Date();
+    _aiAnalysisFetchedOnce=true;
+  }catch(e){
+    _aiAnalysisError=true;
+  }
+  _aiAnalysisLoading=false;
+  renderAiAnalysisCard();
+}
+function refreshAiAnalysis(){ loadAiAnalysis(true); }
+
+function renderAiAnalysisCard(){
+  const el=document.getElementById('insights-ai-card');
+  const now=new Date();
+  const dateLabel=`${MONTH_NAMES[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  let body;
+  if(_aiAnalysisLoading){
+    body=`<div class="no-entries" style="padding:1rem 0">Analysing your tasks...</div>`;
+  }else if(_aiAnalysisError){
+    body=`<div style="color:#D85A30;font-size:13px;margin-bottom:8px">Analysis unavailable. Check connection.</div>
+      <button class="btn" onclick="refreshAiAnalysis()">Retry</button>`;
+  }else if(_aiAnalysisText){
+    const timeLabel=_aiAnalysisTime?_aiAnalysisTime.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+    body=`<div style="font-size:14px;line-height:1.6;margin-bottom:10px">${_aiAnalysisText}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="entry-meta">Last updated: ${timeLabel}</div>
+        <button class="btn" onclick="refreshAiAnalysis()">Refresh ↻</button>
+      </div>`;
+  }else{
+    body='';
+  }
+  el.innerHTML=`<div class="section-title" style="margin-bottom:8px">AI Analysis — ${dateLabel}</div>${body}`;
 }
 
+// ── 2. Streak ────────────────────────────────────────────────────────────────
+function renderInsightsStreak(){
+  const streak=computeStreak();
+  const numEl=document.getElementById('insights-streak-num');
+  const subEl=document.getElementById('insights-streak-sub');
+  if(streak===0){
+    numEl.textContent='No active streak. Complete a task today to start.';
+    numEl.style.color='#6B6A66';
+    numEl.style.fontSize='16px';
+    numEl.style.fontWeight='500';
+    subEl.textContent='';
+  }else{
+    numEl.textContent=`🔥 ${streak} day streak`;
+    numEl.style.color='#1A1A18';
+    numEl.style.fontSize='36px';
+    numEl.style.fontWeight='700';
+    subEl.textContent=`${streak} consecutive day${streak===1?'':'s'} with at least 1 task completed`;
+  }
+}
+
+// ── 3. Deadline Pressure Score ─────────────────────────────────────────────
+function renderInsightsPressure(){
+  const todayStr=today();
+  const pending=_tasksAll.filter(t=>t.status==='pending' && t.deadlineDate);
+  let score=0, overdueCount=0, dueTomorrow=0, hardThisWeek=0;
+  pending.forEach(t=>{
+    const days=daysBetweenDates(todayStr,t.deadlineDate);
+    const isHard=t.deadlineType==='hard';
+    let pts=0;
+    if(days<0){ pts=2; overdueCount++; }
+    else if(days<=2){ pts=1.5; }
+    else if(days<=7){ pts=0.5; }
+    if(days===1) dueTomorrow++;
+    if(isHard && days>=0 && days<=7) hardThisWeek++;
+    if(isHard) pts*=2;
+    score+=pts;
+  });
+  score=Math.min(10,Math.round(score*10)/10);
+  let label='LOW', color='#1D9E75';
+  if(score>=7){ label='HIGH'; color='#D85A30'; }
+  else if(score>=4){ label='MODERATE'; color='#C99A2E'; }
+  let closer='No immediate pressure.';
+  if(score>=7) closer='Prioritise before accepting new work.';
+  else if(score>=4) closer='Keep an eye on upcoming deadlines.';
+  const desc=`${overdueCount} overdue task${overdueCount===1?'':'s'} · ${hardThisWeek} hard deadline${hardThisWeek===1?'':'s'} this week · ${dueTomorrow} due tomorrow. ${closer}`;
+  document.getElementById('insights-pressure-card').innerHTML=`
+    <div class="section-title">Pressure score</div>
+    <div style="font-size:32px;font-weight:700;color:${color};margin-top:4px">${score} / 10</div>
+    <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;color:${color};margin-bottom:10px">${label}</div>
+    <div style="font-size:13px;color:#6B6A66;line-height:1.5">${desc}</div>`;
+}
+
+// ── 4. Overdue Age Tracker ──────────────────────────────────────────────────
+function overdueAgeRowHTML(t,todayStr){
+  if(String(t.id)===String(_editingTaskId)) return taskEditFormHTML(t);
+  const daysOverdue=daysBetweenDates(t.deadlineDate,todayStr);
+  let color='#C99A2E', bold=false;
+  if(daysOverdue>=8){ color='#D85A30'; bold=true; }
+  else if(daysOverdue>=4){ color='#D85A30'; }
+  const warn=daysOverdue>=7?' ⚠️':'';
+  return `<div class="task-card focus-overdue">
+    <div style="flex:1;min-width:0">
+      <div class="task-desc">${t.desc}</div>
+      <div class="task-meta">${normalizeClientName(t.client)} · <span style="color:${color};font-weight:${bold?700:400}">${daysOverdue} days overdue${warn}</span></div>
+    </div>
+    <button class="entry-edit" onclick="toggleTaskEdit(${t.id})" title="Edit">✎</button>
+    <button class="entry-done" onclick="markTaskDone(${t.id})" title="Mark done">✓</button>
+  </div>`;
+}
+function renderInsightsOverdueTracker(){
+  const todayStr=today();
+  const rows=_tasksAll.filter(t=>t.status==='pending' && t.deadlineDate && t.deadlineDate<todayStr)
+    .sort((a,b)=>a.deadlineDate.localeCompare(b.deadlineDate));
+  const el=document.getElementById('insights-overdue-list');
+  if(rows.length===0){ el.innerHTML='<div class="no-entries" style="color:#1D9E75">No overdue tasks.</div>'; return; }
+  el.innerHTML=rows.map(t=>overdueAgeRowHTML(t,todayStr)).join('');
+}
+
+// ── 5. Time Distribution by Client ──────────────────────────────────────────
+function renderInsightsTimeDistribution(){
+  const now=new Date();
+  const monthStr=today().slice(0,7);
+  document.getElementById('insights-time-dist-sub').textContent=`Based on estimated hours logged — ${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
+  const byClient={};
+  _tasksAll.forEach(t=>{
+    if(!t.estimateMinutes || t.estimateMinutes<=0) return;
+    if(!t.deadlineDate || t.deadlineDate.slice(0,7)!==monthStr) return;
+    const c=normalizeClientName(t.client);
+    byClient[c]=(byClient[c]||0)+t.estimateMinutes/60;
+  });
+  const rows=Object.entries(byClient).sort((a,b)=>b[1]-a[1]);
+  const el=document.getElementById('insights-time-dist');
+  if(rows.length===0){ el.innerHTML='<div class="no-entries">No time estimates recorded this month. Add estimated hours to tasks for this view.</div>'; return; }
+  const maxHrs=Math.max(...rows.map(r=>r[1]));
+  const total=rows.reduce((s,r)=>s+r[1],0);
+  el.innerHTML=rows.map(([client,hrs])=>{
+    const w=Math.max(2,Math.round(hrs/maxHrs*100));
+    return `<div class="entry-row" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div class="entry-meta">${client} · ${Math.round(hrs*10)/10} hrs</div>
+      <div class="bar-wrap"><div style="width:${w}%;height:6px;background:#1A1A18;border-radius:3px"></div></div>
+    </div>`;
+  }).join('')+`<div class="summary-msg" style="margin-top:8px">Total logged: ${Math.round(total*10)/10} hrs this month</div>`;
+}
+
+// ── 6. Productivity Pattern ─────────────────────────────────────────────────
+function renderInsightsDayOfWeek(){
+  const counts=[0,0,0,0,0,0,0]; // Mon..Sun
+  _tasksAll.filter(t=>t.status==='done').forEach(t=>{
+    const d=taskDoneDateStr(t);
+    if(!d) return;
+    const dow=(new Date(d+'T00:00:00Z').getUTCDay()+6)%7;
+    counts[dow]++;
+  });
+  const labels=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const max=Math.max(...counts,1);
+  document.getElementById('insights-dow-chart').innerHTML=labels.map((l,i)=>{
+    const w=Math.round(counts[i]/max*100);
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <div style="width:32px;font-size:12px;color:#6B6A66">${l}</div>
+      <div class="bar-wrap" style="flex:1"><div style="width:${w}%;height:8px;background:#1D9E75;border-radius:2px"></div></div>
+      <div style="width:20px;font-size:12px;text-align:right">${counts[i]}</div>
+    </div>`;
+  }).join('');
+  const maxCount=Math.max(...counts);
+  const topDays=labels.filter((l,i)=>counts[i]===maxCount && maxCount>0);
+  document.getElementById('insights-dow-sub').textContent=maxCount>0?`Most productive day: ${topDays.join(' and ')}`:'Not enough data yet.';
+}
+function renderInsightsMonthlyTrend(){
+  const now=new Date();
+  const months=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(Date.UTC(now.getFullYear(),now.getMonth()-i,1));
+    months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`);
+  }
+  const counts={};
+  _tasksAll.filter(t=>t.status==='done').forEach(t=>{
+    const d=taskDoneDateStr(t);
+    if(!d) return;
+    const m=d.slice(0,7);
+    counts[m]=(counts[m]||0)+1;
+  });
+  const vals=months.map(m=>counts[m]||0);
+  const max=Math.max(...vals,1);
+  document.getElementById('insights-trend-chart').innerHTML=`<div style="display:flex;align-items:flex-end;gap:10px;height:70px">${months.map((m,i)=>{
+    const h=Math.max(4,Math.round(vals[i]/max*52));
+    const label=MONTHS[Number(m.slice(5,7))-1];
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+      <div style="font-size:11px;color:#6B6A66;margin-bottom:2px">${vals[i]}</div>
+      <div style="width:100%;max-width:28px;height:${h}px;background:#1D9E75;border-radius:3px 3px 0 0"></div>
+      <div style="font-size:10px;color:#6B6A66;margin-top:4px">${label}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ── 7. Completion Rate ──────────────────────────────────────────────────────
 function insightsAvailableMonths(){
   const set=new Set();
   _tasksAll.forEach(t=>{ if(t.deadlineDate) set.add(t.deadlineDate.slice(0,7)); });
@@ -1337,66 +1582,84 @@ function renderInsightsCompletion(){
   });
   const total=onTime+late+overdueIncomplete;
   const pct=n=>total?Math.round(n/total*100):0;
+  const [y,mo]=_insightsMonth.split('-');
+  const monthLabel=`${MONTH_NAMES[Number(mo)-1]} ${y}`.toUpperCase();
   const card=document.getElementById('insights-completion-card');
   if(total===0){
-    card.innerHTML='<div class="no-entries">No tasks due this month.</div>';
+    card.innerHTML=`<div class="section-title">${monthLabel}</div><div class="no-entries">No tasks due this month.</div>`;
     return;
   }
+  const overallPct=Math.round((onTime+late)/total*100);
   card.innerHTML=`
+    <div class="section-title">${monthLabel}</div>
+    <div class="entry-meta" style="margin-bottom:12px">${total} task${total===1?'':'s'} total</div>
     <div style="display:flex;flex-direction:column;gap:10px">
       <div>
-        <div class="entry-meta" style="margin-bottom:4px">On-time · ${onTime} (${pct(onTime)}%)</div>
+        <div class="entry-meta" style="margin-bottom:4px">On time · ${onTime} tasks · ${pct(onTime)}%</div>
         <div class="bar-wrap"><div style="width:${pct(onTime)}%;height:4px;background:#1D9E75;border-radius:2px"></div></div>
       </div>
       <div>
-        <div class="entry-meta" style="margin-bottom:4px">Late · ${late} (${pct(late)}%)</div>
+        <div class="entry-meta" style="margin-bottom:4px">Late · ${late} tasks · ${pct(late)}%</div>
         <div class="bar-wrap"><div style="width:${pct(late)}%;height:4px;background:#C99A2E;border-radius:2px"></div></div>
       </div>
       <div>
-        <div class="entry-meta" style="margin-bottom:4px">Overdue, still incomplete · ${overdueIncomplete} (${pct(overdueIncomplete)}%)</div>
+        <div class="entry-meta" style="margin-bottom:4px">Still incomplete · ${overdueIncomplete} tasks · ${pct(overdueIncomplete)}%</div>
         <div class="bar-wrap"><div style="width:${pct(overdueIncomplete)}%;height:4px;background:#D85A30;border-radius:2px"></div></div>
       </div>
-    </div>`;
+    </div>
+    <div class="entry-meta" style="margin-top:12px;font-weight:600;color:#1A1A18">Overall completion rate: ${overallPct}%</div>`;
 }
 
+// ── 8. By Client Breakdown ──────────────────────────────────────────────────
 function renderInsightsClients(){
   const byClient={};
   _tasksAll.forEach(t=>{
-    const c=t.client||'(no client)';
-    byClient[c]=byClient[c]||{count:0,done:0,onTime:0};
+    const c=normalizeClientName(t.client);
+    byClient[c]=byClient[c]||{count:0,done:0,onTime:0,turnaroundSum:0,turnaroundN:0};
     byClient[c].count++;
     if(t.status==='done'){
       byClient[c].done++;
       const cd=taskDoneDateStr(t);
       if(!t.deadlineDate || (cd && cd<=t.deadlineDate)) byClient[c].onTime++;
+      if(cd && t.createdAt){
+        const createdDateStr=new Date(t.createdAt).toISOString().split('T')[0];
+        const days=daysBetweenDates(createdDateStr,cd);
+        if(days>=0){ byClient[c].turnaroundSum+=days; byClient[c].turnaroundN++; }
+      }
     }
   });
   const rows=Object.entries(byClient).sort((a,b)=>b[1].count-a[1].count);
   const el=document.getElementById('insights-client-chart');
   if(rows.length===0){ el.innerHTML='<div class="no-entries">No tasks yet.</div>'; return; }
-  const maxCount=Math.max(...rows.map(r=>r[1].count));
   el.innerHTML=rows.map(([client,d])=>{
     const onTimePct=d.done?Math.round(d.onTime/d.done*100):null;
-    const w=Math.round(d.count/maxCount*100);
-    return `<div class="entry-row" style="flex-direction:column;align-items:stretch;gap:6px">
-      <div class="entry-meta">${client} · ${d.count} task${d.count===1?'':'s'}${onTimePct!=null?` · ${onTimePct}% on-time`:''}</div>
-      <div class="bar-wrap"><div style="width:${w}%;height:4px;background:#1A1A18;border-radius:2px"></div></div>
+    const avgDays=d.turnaroundN?Math.round(d.turnaroundSum/d.turnaroundN*10)/10:null;
+    return `<div class="entry-row">
+      <div style="flex:1;min-width:0">
+        <div class="entry-desc">${client}</div>
+        <div class="entry-meta">${d.count} task${d.count===1?'':'s'}${onTimePct!=null?` · ${onTimePct}% on time`:''}${avgDays!=null?` · avg ${avgDays} day${avgDays===1?'':'s'} to complete`:''}</div>
+      </div>
     </div>`;
   }).join('');
 }
 
+// ── 9. Postpone Tracker ─────────────────────────────────────────────────────
 function renderInsightsPostponed(){
   const rows=_tasksAll.filter(t=>(t.postponeCount||0)>0).sort((a,b)=>(b.postponeCount||0)-(a.postponeCount||0));
   const el=document.getElementById('insights-postpone-list');
   if(rows.length===0){ el.innerHTML='<div class="no-entries">No postponed tasks.</div>'; return; }
-  el.innerHTML=rows.map(t=>`<div class="entry-row">
-    <div style="flex:1;min-width:0">
-      <div class="entry-desc">${t.desc}</div>
-      <div class="entry-meta">postponed ${t.postponeCount}× ${t.client?' · '+t.client:''} · ${t.status==='done'?'completed':'still pending'}${t.deadlineDate?' · due '+t.deadlineDate:''}</div>
-    </div>
-  </div>`).join('');
+  el.innerHTML=rows.map(t=>{
+    const high=(t.postponeCount||0)>=3;
+    return `<div class="entry-row"${high?' style="border-color:#F0997B;background:#FFFBFA"':''}>
+      <div style="flex:1;min-width:0">
+        <div class="entry-desc">${t.desc}${high?' ⚠️':''}</div>
+        <div class="entry-meta"${high?' style="color:#D85A30"':''}>${normalizeClientName(t.client)} · postponed ${t.postponeCount}× · ${t.status==='done'?'completed':'still pending'}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
+// ── 10. Task Completion Heatmap ─────────────────────────────────────────────
 function renderInsightsHeatmap(){
   const todayStr=today();
   const start=dateStrAddDays(todayStr,-83);
@@ -1430,35 +1693,18 @@ function renderInsightsHeatmap(){
   document.getElementById('insights-heatmap-total').textContent=`${total} task${total===1?'':'s'} completed in the last 12 weeks`;
 }
 
-function renderInsightsMonthlyChart(){
-  const counts={};
-  _tasksAll.filter(t=>t.status==='done').forEach(t=>{
-    const d=taskDoneDateStr(t);
-    if(!d) return;
-    const m=d.slice(0,7);
-    counts[m]=(counts[m]||0)+1;
-  });
-  const months=Object.keys(counts).sort();
-  if(months.length===0){
-    const canvas=document.getElementById('insights-monthly-chart');
-    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
-    return;
-  }
-  if(chartInst5)chartInst5.destroy();
-  chartInst5=new Chart(document.getElementById('insights-monthly-chart'),{
-    type:'bar',
-    data:{labels:months,datasets:[{label:'Completed',data:months.map(m=>counts[m]),backgroundColor:'#1D9E75',borderRadius:4}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{stepSize:1}}}}
-  });
-}
-
 function renderInsights(){
+  loadAiAnalysis(false);
   renderInsightsStreak();
+  renderInsightsPressure();
+  renderInsightsOverdueTracker();
+  renderInsightsTimeDistribution();
+  renderInsightsDayOfWeek();
+  renderInsightsMonthlyTrend();
   renderInsightsCompletion();
   renderInsightsClients();
   renderInsightsPostponed();
   renderInsightsHeatmap();
-  renderInsightsMonthlyChart();
 }
 
 function findTaskById(id){
