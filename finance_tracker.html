@@ -662,6 +662,7 @@ function renderOverview(){
     <div class="metric"><div class="metric-label">Net profit</div><div class="metric-value" style="color:${p>=0?'#1D9E75':'#D85A30'}">${p<0?'-':''}${fmt(p)}</div></div>`;
   document.getElementById('recent-entries').innerHTML=me.length?me.map(e=>entryHTML(e)).join(''):'<div class="no-entries">No entries this month.</div>';
   renderBudget(exp);
+  renderGoalCard();
   renderWeekCard();
 }
 
@@ -692,13 +693,25 @@ function renderGoalCard(){
   const card=document.getElementById('goal-card');
   if(!_goal){ card.style.display='none'; return; }
   card.style.display='';
-  const pct=Math.min(_goal.pctProgress,100);
-  const color=_goal.behindTarget?'#C99A2E':'#1D9E75';
-  document.getElementById('goal-bar').style.cssText=`height:8px;border-radius:4px;width:${pct}%;background:${color}`;
-  document.getElementById('goal-label').textContent=`${fmt(_goal.earnedThisMonth)} / ${fmt(_goal.monthlyTarget)} (${_goal.pctProgress}%)`;
+
+  const now=new Date();
+  const isCurrentMonth=selYear===now.getFullYear()&&selMonth===now.getMonth();
+  const earned=isCurrentMonth?_goal.earnedThisMonth:getEntries()
+    .filter(e=>e.type==='income'&&new Date(e.date).getFullYear()===selYear&&new Date(e.date).getMonth()===selMonth)
+    .reduce((s,e)=>s+e.amount,0);
+  const pct=_goal.monthlyTarget>0?Math.round(earned/_goal.monthlyTarget*100):0;
+  const barPct=Math.min(pct,100);
+  const color=(isCurrentMonth&&_goal.behindTarget)?'#C99A2E':'#1D9E75';
+
+  document.getElementById('goal-bar').style.cssText=`height:8px;border-radius:4px;width:${barPct}%;background:${color}`;
+  document.getElementById('goal-label').textContent=`${fmt(earned)} / ${fmt(_goal.monthlyTarget)} (${pct}%)`;
+
   const note=document.getElementById('goal-note');
-  let text=`${fmt(_goal.remaining)} remaining this month · Annual: ${fmt(_goal.earnedThisYear)} / ${fmt(_goal.annualGoal)} (${_goal.annualPctProgress}%)`;
-  if(_goal.behindTarget){
+  let text=`${MONTHS[selMonth]} ${selYear} — ${fmt(Math.max(0,_goal.monthlyTarget-earned))} remaining`;
+  if(selYear===now.getFullYear()){
+    text+=` · Annual: ${fmt(_goal.earnedThisYear)} / ${fmt(_goal.annualGoal)} (${_goal.annualPctProgress}%)`;
+  }
+  if(isCurrentMonth&&_goal.behindTarget){
     text=`⚠️ ${fmt(_goal.behindAmount)} behind pace — ${_goal.weeksLeftInMonth} weeks left. `+text;
     if(_goal.unpaidInvoices&&_goal.unpaidInvoices.length){
       const clients=[...new Set(_goal.unpaidInvoices.map(i=>i.client))].join(' and ');
@@ -706,7 +719,7 @@ function renderGoalCard(){
     }
   }
   note.textContent=text;
-  note.style.color=_goal.behindTarget?'#7A5B14':'#6B6A66';
+  note.style.color=(isCurrentMonth&&_goal.behindTarget)?'#7A5B14':'#6B6A66';
 }
 
 // ── This week (read-only overview: income pace + invoices due/overdue) ─────────
