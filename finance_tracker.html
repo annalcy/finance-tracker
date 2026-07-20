@@ -97,7 +97,6 @@
   .badge-skip { background: #F0EFEA; color: #6B6A66; font-size: 11px; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; }
   .import-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
   .import-msg { font-size: 12px; color: #6B6A66; }
-  #lock-screen { position: fixed; inset: 0; background: #F7F6F2; display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 1.5rem; }
   .lock-card { background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 12px; padding: 2rem; width: 100%; max-width: 320px; text-align: center; }
   .lock-card h2 { margin-bottom: 4px; }
   .lock-card p { font-size: 13px; color: #6B6A66; margin-bottom: 1.25rem; }
@@ -109,22 +108,21 @@
 </style>
 </head>
 <body>
-<div id="lock-screen">
-  <div class="lock-card">
-    <h2>🔒 Locked</h2>
-    <p>Enter your passcode to open your Personal OS</p>
-    <input type="password" id="lock-input" inputmode="text" autocomplete="off" placeholder="passcode" autofocus />
-    <button class="btn primary" onclick="tryUnlock()">Unlock</button>
-    <div class="lock-error" id="lock-error"></div>
-  </div>
-</div>
-<div class="app" style="display:none">
+<div class="app">
   <h2>Anna's Personal OS</h2>
   <p class="subtitle">Finance & productivity, all in one place</p>
   <div class="data-note">Synced live to your Firebase backend — entries, invoices, and tasks logged via Telegram show up here automatically, no manual export needed.</div>
   <div class="category-tabs">
     <button class="category-tab active" data-category="finance" onclick="showCategory('finance')">💰 Finance</button>
     <button class="category-tab" data-category="productivity" onclick="showCategory('productivity')">✅ Productivity</button>
+  </div>
+
+  <div id="finance-lock" class="lock-card" style="margin:2rem auto;display:none">
+    <h2>🔒 Locked</h2>
+    <p>Enter your passcode to view Finance</p>
+    <input type="password" id="lock-input" inputmode="text" autocomplete="off" placeholder="passcode" />
+    <button class="btn primary" onclick="tryUnlock()">Unlock</button>
+    <div class="lock-error" id="lock-error"></div>
   </div>
 
   <div class="tabs" id="finance-tabs">
@@ -223,6 +221,7 @@
       <span class="pill" data-view="year" onclick="setReportView('year')">By year</span>
       <span class="pill" data-view="investments" onclick="setReportView('investments')">Investments</span>
       <span class="pill" data-view="invoices" onclick="setReportView('invoices')">Invoices</span>
+      <span class="pill" data-view="goal" onclick="setReportView('goal')">Goal</span>
     </div>
 
     <div id="report-view-alltime">
@@ -285,6 +284,7 @@
       <div class="legend">
         <span><span class="legend-sq" style="background:#5DCAA5"></span>Income</span>
         <span><span class="legend-sq" style="background:#F0997B"></span>Expenses</span>
+        <span id="monthly-target-legend" style="display:none"><span class="legend-sq" style="background:#1A1A18"></span>Monthly target</span>
       </div>
       <div class="chart-wrap"><canvas id="monthly-chart" role="img" aria-label="Monthly income and expenses bar chart"></canvas></div>
 
@@ -318,6 +318,14 @@
       <div class="section-title">Outstanding invoices</div>
       <div id="invoices-msg" class="summary-msg"></div>
       <div class="entries-list" id="invoices-table"></div>
+    </div>
+
+    <div id="report-view-goal" style="display:none">
+      <div class="metrics" id="goal-report-metrics"></div>
+      <div class="summary-msg" id="goal-report-projection" style="margin-top:10px"></div>
+
+      <div class="section-title" style="margin-top:1.25rem">Month by month</div>
+      <div class="entries-list" id="goal-report-table"></div>
     </div>
   </div>
 
@@ -708,6 +716,7 @@ async function loadGoal(){
   }
   renderGoalCard();
   renderWeekCard();
+  if(_currentPage==='reports'&&_reportView==='goal')renderGoalReportView();
 }
 function renderGoalCard(){
   const card=document.getElementById('goal-card');
@@ -1136,6 +1145,7 @@ function setReportView(v){
   document.getElementById('report-view-year').style.display=v==='year'?'':'none';
   document.getElementById('report-view-investments').style.display=v==='investments'?'':'none';
   document.getElementById('report-view-invoices').style.display=v==='invoices'?'':'none';
+  document.getElementById('report-view-goal').style.display=v==='goal'?'':'none';
   document.querySelectorAll('#report-view-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.view===v));
   renderReports();
 }
@@ -1295,11 +1305,57 @@ function renderByYearReportView(entries){
 
   const md=MONTHS.map((_,i)=>{const me=ye.filter(e=>new Date(e.date).getMonth()===i);return{income:me.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0),expense:me.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0)};});
   if(chartInst)chartInst.destroy();
-  chartInst=new Chart(document.getElementById('monthly-chart'),{type:'bar',data:{labels:MONTHS,datasets:[{label:'Income',data:md.map(d=>d.income),backgroundColor:'#5DCAA5',borderRadius:4},{label:'Expenses',data:md.map(d=>d.expense),backgroundColor:'#F0997B',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}}}}});
+  const showTarget=_goal&&repYear===new Date().getFullYear();
+  document.getElementById('monthly-target-legend').style.display=showTarget?'':'none';
+  const datasets=[{label:'Income',data:md.map(d=>d.income),backgroundColor:'#5DCAA5',borderRadius:4},{label:'Expenses',data:md.map(d=>d.expense),backgroundColor:'#F0997B',borderRadius:4}];
+  if(showTarget)datasets.push({type:'line',label:'Monthly target',data:MONTHS.map(()=>_goal.monthlyTarget),borderColor:'#1A1A18',borderDash:[4,4],pointRadius:0,borderWidth:2});
+  chartInst=new Chart(document.getElementById('monthly-chart'),{type:'bar',data:{labels:MONTHS,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{callback:v=>'$'+Math.round(v/1000)+'k'}}}}});
 
   renderMarginChart(ye);
   renderClientConcentration(ye);
   renderFullBreakdown(ye);
+}
+
+function renderGoalReportView(){
+  const metricsEl=document.getElementById('goal-report-metrics');
+  const projEl=document.getElementById('goal-report-projection');
+  const tableEl=document.getElementById('goal-report-table');
+  if(!_goal){
+    metricsEl.innerHTML='';
+    projEl.textContent='No income goal set yet.';
+    tableEl.innerHTML='';
+    return;
+  }
+  const now=new Date();
+  metricsEl.innerHTML=`
+    <div class="metric"><div class="metric-label">Earned this year</div><div class="metric-value" style="color:#1D9E75">${fmt(_goal.earnedThisYear)}</div></div>
+    <div class="metric"><div class="metric-label">Annual goal</div><div class="metric-value">${fmt(_goal.annualGoal)}</div></div>
+    <div class="metric"><div class="metric-label">Progress</div><div class="metric-value">${_goal.annualPctProgress}%</div></div>`;
+
+  const monthsElapsed=now.getMonth()+1;
+  const projected=Math.round((_goal.earnedThisYear/monthsElapsed)*12);
+  const diff=projected-_goal.annualGoal;
+  const projColor=diff>=0?'#1D9E75':'#D85A30';
+  projEl.innerHTML=`At your current pace, you're on track to finish the year at <strong style="color:${projColor}">${fmt(projected)}</strong> — ${diff>=0?fmt(diff)+' over':fmt(Math.abs(diff))+' short of'} your ${fmt(_goal.annualGoal)} goal.`;
+
+  const entries=getEntries();
+  const thisYear=now.getFullYear();
+  const rows=[];
+  for(let m=0;m<=now.getMonth();m++){
+    const earned=entries.filter(e=>e.type==='income'&&new Date(e.date).getFullYear()===thisYear&&new Date(e.date).getMonth()===m).reduce((s,e)=>s+e.amount,0);
+    rows.push({m,earned,hit:earned>=_goal.monthlyTarget});
+  }
+  tableEl.innerHTML=rows.slice().reverse().map(r=>{
+    const pct=_goal.monthlyTarget>0?Math.round(r.earned/_goal.monthlyTarget*100):0;
+    const badge=r.hit?`<span class="badge-new">Hit target</span>`:`<span class="badge-skip">${pct}%</span>`;
+    return `<div class="entry-row">
+      <div style="flex:1;min-width:0">
+        <div class="entry-desc">${MONTHS[r.m]} ${thisYear}</div>
+        <div class="entry-meta">${badge}</div>
+      </div>
+      <div class="entry-amount" style="color:${r.hit?'#1D9E75':'#1A1A18'}">${fmt(r.earned)} <span style="color:#6B6A66;font-weight:400">/ ${fmt(_goal.monthlyTarget)}</span></div>
+    </div>`;
+  }).join('');
 }
 
 function renderReports(){
@@ -1308,6 +1364,7 @@ function renderReports(){
   else if(_reportView==='year') renderByYearReportView(entries);
   else if(_reportView==='investments') loadInvestments();
   else if(_reportView==='invoices') loadInvoices();
+  else if(_reportView==='goal') renderGoalReportView();
 }
 
 function showPage(name){
@@ -1325,30 +1382,32 @@ function showPage(name){
 function showCategory(cat){
   _activeCategory=cat;
   document.querySelectorAll('.category-tab').forEach(c=>c.classList.toggle('active',c.dataset.category===cat));
+  if(cat==='finance'&&sessionStorage.getItem('ft_unlocked')!=='1'){
+    document.getElementById('finance-tabs').style.display='none';
+    document.getElementById('productivity-tabs').style.display='none';
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.getElementById('finance-lock').style.display='';
+    document.getElementById('lock-input').focus();
+    return;
+  }
+  document.getElementById('finance-lock').style.display='none';
   document.getElementById('finance-tabs').style.display=cat==='finance'?'':'none';
   document.getElementById('productivity-tabs').style.display=cat==='productivity'?'':'none';
   showPage(cat==='finance'?'overview':'tasks');
 }
 
-// ── Lock screen ──────────────────────────────────────────────────────────────
-const PASSCODE_HASH='5e0ba113494dabf8a79f7dffc512bdf910421a7cdb8ff88d8475fd97042024ed';
+// ── Lock screen (Finance only — Productivity/Tasks is never gated) ────────────
+const PASSCODE_HASH='05b3abf2579a5eb66403cd78be557fd860633a1fe2103c7642030defe32c657f';
 async function sha256Hex(str){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
-}
-function startApp(){
-  document.getElementById('lock-screen').style.display='none';
-  document.querySelector('.app').style.display='';
-  document.getElementById('f-date').value=today();
-  setType('income');
-  initApp();
 }
 async function tryUnlock(){
   const input=document.getElementById('lock-input');
   const hash=await sha256Hex(input.value);
   if(hash===PASSCODE_HASH){
     sessionStorage.setItem('ft_unlocked','1');
-    startApp();
+    showCategory('finance');
   }else{
     document.getElementById('lock-error').textContent='Wrong passcode';
     input.classList.remove('shake');void input.offsetWidth;input.classList.add('shake');
@@ -1356,8 +1415,10 @@ async function tryUnlock(){
   }
 }
 document.getElementById('lock-input').addEventListener('keydown',e=>{if(e.key==='Enter')tryUnlock();});
-if(sessionStorage.getItem('ft_unlocked')==='1'){ startApp(); }
-else { document.getElementById('lock-input').focus(); }
+document.getElementById('f-date').value=today();
+setType('income');
+initApp();
+showCategory(_activeCategory);
 
 // ── Import CSV ───────────────────────────────────────────────────────────────
 const PCAT_MAP = {
