@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Anna's Finance Tracker</title>
+<title>Anna's Personal OS</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Finance">
+<meta name="apple-mobile-web-app-title" content="Personal OS">
 <script>
 (function(){
   var c=document.createElement('canvas');c.width=c.height=180;
@@ -24,6 +24,9 @@
   .app { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
   h2 { font-size: 22px; font-weight: 600; margin-bottom: 3px; }
   .subtitle { font-size: 13px; color: #6B6A66; margin-bottom: 1.5rem; }
+  .category-tabs { display: flex; gap: 8px; margin-bottom: 1rem; flex-wrap: wrap; }
+  .category-tab { padding: 10px 20px; font-size: 15px; font-weight: 600; border-radius: 10px; border: 1px solid #E4E2DA; background: #FFFFFF; color: #6B6A66; cursor: pointer; }
+  .category-tab.active { background: #1A1A18; color: #FFFFFF; border-color: transparent; }
   .tabs { display: flex; gap: 4px; margin-bottom: 1.5rem; border-bottom: 1px solid #E4E2DA; flex-wrap: wrap; }
   .tab { padding: 10px 16px; font-size: 14px; background: none; border: none; cursor: pointer; color: #6B6A66; border-bottom: 2px solid transparent; margin-bottom: -1px; }
   .tab.active { color: #1A1A18; border-bottom: 2px solid #1A1A18; font-weight: 600; }
@@ -109,23 +112,31 @@
 <div id="lock-screen">
   <div class="lock-card">
     <h2>🔒 Locked</h2>
-    <p>Enter your passcode to open the finance tracker</p>
+    <p>Enter your passcode to open your Personal OS</p>
     <input type="password" id="lock-input" inputmode="text" autocomplete="off" placeholder="passcode" autofocus />
     <button class="btn primary" onclick="tryUnlock()">Unlock</button>
     <div class="lock-error" id="lock-error"></div>
   </div>
 </div>
 <div class="app" style="display:none">
-  <h2>Anna's finance tracker</h2>
-  <p class="subtitle">Freelance income & expenses — exported snapshot</p>
-  <div class="data-note">This file stores new entries in your browser's local storage on this device. To keep using it across devices, periodically re-export an updated copy from Claude.</div>
-  <div class="tabs">
-    <button class="tab active" onclick="showPage('overview')">Overview</button>
-    <button class="tab" onclick="showPage('tasks')">Tasks</button>
-    <button class="tab" onclick="cancelEdit();showPage('add')">Add entry</button>
-    <button class="tab" onclick="showPage('records')">Records</button>
-    <button class="tab" onclick="showPage('reports')">Reports</button>
-    <button class="tab" onclick="showPage('import')">Import CSV</button>
+  <h2>Anna's Personal OS</h2>
+  <p class="subtitle">Finance & productivity, all in one place</p>
+  <div class="data-note">Synced live to your Firebase backend — entries, invoices, and tasks logged via Telegram show up here automatically, no manual export needed.</div>
+  <div class="category-tabs">
+    <button class="category-tab active" data-category="finance" onclick="showCategory('finance')">💰 Finance</button>
+    <button class="category-tab" data-category="productivity" onclick="showCategory('productivity')">✅ Productivity</button>
+  </div>
+
+  <div class="tabs" id="finance-tabs">
+    <button class="tab active" data-page="overview" onclick="showPage('overview')">Overview</button>
+    <button class="tab" data-page="add" onclick="cancelEdit();showPage('add')">Add entry</button>
+    <button class="tab" data-page="records" onclick="showPage('records')">Records</button>
+    <button class="tab" data-page="reports" onclick="showPage('reports')">Reports</button>
+    <button class="tab" data-page="import" onclick="showPage('import')">Import CSV</button>
+  </div>
+
+  <div class="tabs" id="productivity-tabs" style="display:none">
+    <button class="tab active" data-page="tasks" onclick="showPage('tasks')">Tasks</button>
   </div>
 
   <div id="page-overview" class="page active">
@@ -354,7 +365,7 @@ const MONTHLY_BUDGET = 8500;
 const COMPARISON_START_YEAR = 2024; // pre-freelance years are kept in lifetime totals but excluded from year-vs-year comparisons
 const _todayParts=today().split('-').map(Number);
 let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null;
-let _entries=[], _importedUUIDs=new Set(), _currentPage='overview';
+let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCategory='finance';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
@@ -537,6 +548,7 @@ async function _deleteDoc(id){
 }
 function renderCurrent(){
   if(_currentPage==='overview')renderOverview();
+  if(_currentPage==='tasks')loadTasks();
   if(_currentPage==='records'){populateRecordFilters(_entries);renderRecords();}
   if(_currentPage==='reports')renderReports();
 }
@@ -1303,11 +1315,19 @@ function showPage(name){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
-  document.querySelectorAll('.tab').forEach(t=>{if(t.textContent.trim().toLowerCase().includes(name.substring(0,3)))t.classList.add('active');});
+  document.querySelectorAll('.tab').forEach(t=>{if(t.dataset.page===name)t.classList.add('active');});
   if(name==='overview')renderOverview();
   if(name==='tasks')loadTasks();
   if(name==='records'){populateRecordFilters(getEntries());renderRecords();}
   if(name==='reports')renderReports();
+}
+
+function showCategory(cat){
+  _activeCategory=cat;
+  document.querySelectorAll('.category-tab').forEach(c=>c.classList.toggle('active',c.dataset.category===cat));
+  document.getElementById('finance-tabs').style.display=cat==='finance'?'':'none';
+  document.getElementById('productivity-tabs').style.display=cat==='productivity'?'':'none';
+  showPage(cat==='finance'?'overview':'tasks');
 }
 
 // ── Lock screen ──────────────────────────────────────────────────────────────
