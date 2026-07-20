@@ -10,8 +10,9 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     const tasks = await tasksRepo.getCachedTasks();
     const { date: today } = hktNow();
+    const includeAll = req.query.all === 'true';
     const annotated = tasks
-      .filter(t => t.status === 'pending')
+      .filter(t => includeAll || t.status === 'pending')
       .map(t => ({ ...t, daysUntilDeadline: t.deadlineDate ? daysBetween(today, t.deadlineDate) : null }))
       .sort((a, b) => {
         if (a.deadlineType !== b.deadlineType) return a.deadlineType === 'hard' ? -1 : 1;

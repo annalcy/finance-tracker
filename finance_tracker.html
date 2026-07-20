@@ -85,6 +85,22 @@
   .legend-sq { width: 10px; height: 10px; border-radius: 2px; }
   .data-note { font-size: 12px; color: #6B6A66; background: #FFF8E8; border: 1px solid #F0E0B8; border-radius: 8px; padding: 10px 14px; margin-bottom: 1.5rem; }
   ::placeholder { color: #ADABA3; }
+
+  .cal-grid-head { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; font-size: 11px; font-weight: 600; color: #6B6A66; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; text-align: center; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
+  .cal-cell { position: relative; min-height: 84px; background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .cal-cell-empty { background: transparent; border: none; }
+  .cal-cell-today { background: #F0EFEA; border-color: #DAD8D0; }
+  .cal-cell-num { font-size: 12px; font-weight: 600; color: #6B6A66; }
+  .cal-cell-today .cal-cell-num { color: #1A1A18; }
+  .cal-cell-pills { display: flex; flex-direction: column; gap: 3px; }
+  .cal-pill { font-size: 10px; padding: 2px 6px; border-radius: 5px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-pill-more { background: #F0EFEA; color: #6B6A66; font-weight: 600; }
+  .cal-popover { position: absolute; top: 100%; left: 0; z-index: 10; margin-top: 4px; background: #FFFFFF; border: 1px solid #E4E2DA; border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 3px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 160px; }
+  @media (max-width: 640px) { .cal-cell { min-height: 60px; } .cal-cell-pills { display: none; } .cal-cell.cal-cell-today .cal-cell-pills { display: flex; } }
+
+  .heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7,1fr); gap: 3px; overflow-x: auto; padding-bottom: 4px; }
+  .heatmap-cell { width: 12px; height: 12px; border-radius: 2px; background: #E4E2DA; }
   .import-drop { border: 2px dashed #DAD8D0; border-radius: 12px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
   .import-drop:hover, .import-drop.drag { border-color: #1A1A18; background: #F0EFEA; }
   .import-drop-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
@@ -140,7 +156,9 @@
   </div>
 
   <div class="tabs" id="productivity-tabs" style="display:none">
-    <button class="tab active" data-page="tasks" onclick="showPage('tasks')">Tasks</button>
+    <button class="tab active" data-page="today" onclick="showPage('today')">Today</button>
+    <button class="tab" data-page="calendar" onclick="showPage('calendar')">Calendar</button>
+    <button class="tab" data-page="insights" onclick="showPage('insights')">Insights</button>
   </div>
 
   <div id="page-overview" class="page active">
@@ -175,21 +193,72 @@
     <div class="entries-list" id="recent-entries"></div>
   </div>
 
-  <div id="page-tasks" class="page">
-    <div class="summary-msg" id="tasks-summary-bar"></div>
+  <div id="page-today" class="page">
+    <div class="summary-msg" id="today-summary-bar"></div>
+    <div id="today-empty" class="no-entries" style="display:none">No tasks due today.</div>
 
-    <div class="section-title" style="margin-top:1rem">Today's focus</div>
-    <div class="entries-list" id="tasks-focus-panel" style="margin-bottom:1.5rem"></div>
+    <div id="today-overdue-section">
+      <div class="section-title" style="margin-top:1rem;color:#D85A30">Overdue</div>
+      <div class="entries-list" id="today-overdue-list" style="margin-bottom:1.5rem"></div>
+    </div>
 
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <div class="section-title" style="margin-bottom:0">Pending tasks</div>
-      <div class="month-pills" id="task-group-toggle" style="margin-bottom:0">
-        <span class="pill active" data-group="deadline" onclick="setTaskGroupBy('deadline')">By Deadline</span>
-        <span class="pill" data-group="client" onclick="setTaskGroupBy('client')">By Client</span>
+    <div id="today-duetoday-section">
+      <div class="section-title" style="color:#C99A2E">Due today</div>
+      <div class="entries-list" id="today-duetoday-list"></div>
+    </div>
+  </div>
+
+  <div id="page-calendar" class="page">
+    <div class="month-pills" id="cal-filter-bar">
+      <span class="pill active" data-filter="all" onclick="setCalFilter('all')">All</span>
+      <span class="pill" data-filter="pending" onclick="setCalFilter('pending')">Pending</span>
+      <span class="pill" data-filter="done" onclick="setCalFilter('done')">Done</span>
+      <span class="pill" data-filter="overdue" onclick="setCalFilter('overdue')">Overdue</span>
+      <span class="pill" data-filter="postponed" onclick="setCalFilter('postponed')">Postponed</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <button class="btn" onclick="calNavMonth(-1)">‹</button>
+        <div id="cal-month-label" style="font-weight:600;font-size:15px;min-width:130px;text-align:center"></div>
+        <button class="btn" onclick="calNavMonth(1)">›</button>
+      </div>
+      <div class="month-pills" id="cal-view-toggle" style="margin-bottom:0">
+        <span class="pill active" data-view="grid" onclick="setCalView('grid')">Grid</span>
+        <span class="pill" data-view="agenda" onclick="setCalView('agenda')">Agenda</span>
       </div>
     </div>
-    <div id="tasks-msg" class="summary-msg"></div>
-    <div class="entries-list" id="tasks-table"></div>
+    <div id="cal-grid-view"></div>
+    <div id="cal-agenda-view" style="display:none"></div>
+    <div class="legend" id="cal-legend" style="margin-top:1rem">
+      <span><span class="legend-sq" style="background:#D85A30"></span>Overdue</span>
+      <span><span class="legend-sq" style="background:#C99A2E"></span>Due</span>
+      <span><span class="legend-sq" style="background:#1D9E75"></span>Completed</span>
+      <span><span class="legend-sq" style="background:#ADABA3"></span>Postponed</span>
+    </div>
+  </div>
+
+  <div id="page-insights" class="page">
+    <div class="form-card" style="text-align:center">
+      <div id="insights-streak-num" style="font-size:32px;font-weight:700"></div>
+      <div id="insights-streak-sub" style="font-size:13px;color:#6B6A66;margin-top:4px"></div>
+    </div>
+
+    <div class="section-title" style="margin-top:1.5rem">Completion rate</div>
+    <div class="month-pills" id="insights-month-pills"></div>
+    <div class="form-card" id="insights-completion-card"></div>
+
+    <div class="section-title" style="margin-top:1.5rem">By client</div>
+    <div class="entries-list" id="insights-client-chart"></div>
+
+    <div class="section-title" style="margin-top:1.5rem">Most postponed tasks</div>
+    <div class="entries-list" id="insights-postpone-list"></div>
+
+    <div class="section-title" style="margin-top:1.5rem">Task completion</div>
+    <div id="insights-heatmap"></div>
+    <div class="summary-msg" id="insights-heatmap-total" style="margin-top:8px"></div>
+
+    <div class="section-title" style="margin-top:1.5rem">Monthly completion history</div>
+    <div class="chart-wrap"><canvas id="insights-monthly-chart" role="img" aria-label="Monthly completed tasks bar chart"></canvas></div>
   </div>
 
   <div id="page-add" class="page">
@@ -389,13 +458,15 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const MONTHLY_BUDGET = 8500;
 const COMPARISON_START_YEAR = 2024; // pre-freelance years are kept in lifetime totals but excluded from year-vs-year comparisons
 const _todayParts=today().split('-').map(Number);
-let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null;
+let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null, chartInst4=null, chartInst5=null;
 let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCategory='finance';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
-let _goal=null, _invoices=[], _tasks=[];
-let _editingTaskId=null, _taskEditType='soft', _taskGroupBy='deadline';
+let _goal=null, _invoices=[], _tasks=[], _tasksAll=[];
+let _editingTaskId=null, _taskEditType='soft';
+let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calExpandedDay=null;
+let _insightsMonth=_todayParts[0]+'-'+String(_todayParts[1]).padStart(2,'0');
 
 const SEED_DATA = [
   {id:1000,type:'income',desc:'Bevis POV video',amount:250,date:'2024-10-15',cat:'Video editing',client:'Bevis'},
@@ -833,63 +904,46 @@ function renderInvoicesView(){
 // ── Tasks ────────────────────────────────────────────────────────────────────
 function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
 
+// ── Shared task data layer (feeds Today/Calendar/Insights) ────────────────────
 async function loadTasks(){
-  const msg=document.getElementById('tasks-msg');
-  if(msg) msg.textContent='Loading…';
   try{
     const res=await fetch(TASKS_API);
     _tasks=await res.json();
-    if(msg) msg.textContent='';
   }catch(e){
-    if(msg) msg.textContent='Could not load tasks — check your connection.';
+    _tasks=[];
   }
-  renderTasksView();
 }
-
-function renderTasksView(){
-  renderTaskSummaryBar();
-  renderTaskFocusPanel();
-  renderTaskList();
-}
-
-function renderTaskSummaryBar(){
-  const el=document.getElementById('tasks-summary-bar');
-  if(!el) return;
-  const overdue=_tasks.filter(t=>t.daysUntilDeadline!=null&&t.daysUntilDeadline<0).length;
-  const dueToday=_tasks.filter(t=>t.daysUntilDeadline===0).length;
-  const upcoming=_tasks.length-overdue-dueToday;
-  el.textContent=`${overdue} overdue · ${dueToday} due today · ${upcoming} upcoming`;
-}
-
-function renderTaskFocusPanel(){
-  const el=document.getElementById('tasks-focus-panel');
-  if(!el) return;
-  const focus=_tasks.filter(t=>t.daysUntilDeadline!=null&&t.daysUntilDeadline<=0)
-    .sort((a,b)=>a.daysUntilDeadline-b.daysUntilDeadline);
-  el.innerHTML=focus.length?focus.map(t=>taskCardHTML(t,{highlight:true})).join(''):'<div class="no-entries">No tasks due today.</div>';
-}
-
-function setTaskGroupBy(g){
-  _taskGroupBy=g;
-  document.querySelectorAll('#task-group-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.group===g));
-  renderTaskList();
-}
-
-function renderTaskList(){
-  const wrap=document.getElementById('tasks-table');
-  if(!wrap) return;
-  if(!_tasks.length){ wrap.innerHTML='<div class="no-entries">No pending tasks. 🎉</div>'; return; }
-  if(_taskGroupBy==='client'){
-    const groups={};
-    _tasks.forEach(t=>{ const key=t.client||'No client'; (groups[key]=groups[key]||[]).push(t); });
-    const keys=Object.keys(groups).sort((a,b)=>a.localeCompare(b));
-    wrap.innerHTML=keys.map(k=>{
-      const items=groups[k].slice().sort((a,b)=>(a.deadlineDate||'9999').localeCompare(b.deadlineDate||'9999'));
-      return `<div class="task-group-header">${k} (${items.length})</div>`+items.map(t=>taskCardHTML(t)).join('');
-    }).join('');
-  }else{
-    wrap.innerHTML=_tasks.map(t=>taskCardHTML(t)).join('');
+async function loadTasksAll(){
+  try{
+    const res=await fetch(`${TASKS_API}?all=true`);
+    _tasksAll=await res.json();
+  }catch(e){
+    _tasksAll=[];
   }
+}
+// doneAt has been written in two formats historically (epoch ms from the
+// dashboard, ISO string from the bot) — normalize either to 'YYYY-MM-DD'.
+function taskDoneDateStr(t){
+  if(!t.doneAt) return null;
+  const d=new Date(t.doneAt);
+  if(isNaN(d.getTime())) return null;
+  return d.toISOString().split('T')[0];
+}
+function isTaskPostponed(t){
+  return t.status==='pending' && (t.postponeCount||0)>0;
+}
+
+async function loadTasksForToday(){
+  await loadTasks();
+  renderToday();
+}
+async function loadTasksForCalendar(){
+  await loadTasksAll();
+  renderCalendar();
+}
+async function loadTasksForInsights(){
+  await loadTasksAll();
+  renderInsights();
 }
 
 function taskCardHTML(t,opts){
@@ -899,18 +953,21 @@ function taskCardHTML(t,opts){
     ?`<span class="badge-skip" style="background:#FAECE7;color:#993C1D">🔴 HARD</span>`
     :`<span class="badge-skip" style="background:#FFF8E8;color:#7A5B14">🟡 SOFT</span>`;
   let urgency='',borderCls='';
-  if(t.daysUntilDeadline!=null){
+  if(t.status==='done'){
+    urgency=` · <span style="color:#1D9E75">✅ done ${taskDoneDateStr(t)||''}</span>`;
+  }else if(t.daysUntilDeadline!=null){
     if(t.daysUntilDeadline<0){ urgency=' · <span style="color:#D85A30">⚠️ overdue</span>'; borderCls=' focus-overdue'; }
     else if(t.daysUntilDeadline===0){ urgency=' · <span style="color:#C99A2E">⏰ due today</span>'; borderCls=' focus-today'; }
     else if(t.daysUntilDeadline<=2) urgency=' · <span style="color:#C99A2E">⏰ due soon</span>';
   }
+  const doneBtn=t.status==='done'?'':`<button class="entry-done" onclick="markTaskDone(${t.id})" title="Mark done">✓</button>`;
   return `<div class="entry-row${opts.highlight?borderCls:''}">
     <div style="flex:1;min-width:0">
       <div class="entry-desc">${t.desc}</div>
       <div class="entry-meta">${badge}${t.client?' · '+t.client:''} · due ${t.deadlineDate||'—'}${urgency}</div>
     </div>
     <button class="entry-edit" onclick="toggleTaskEdit(${t.id})" title="Edit">✎</button>
-    <button class="entry-done" onclick="markTaskDone(${t.id})" title="Mark done">✓</button>
+    ${doneBtn}
   </div>`;
 }
 
@@ -942,20 +999,354 @@ function taskEditFormHTML(t){
   </div>`;
 }
 
+// Whichever sub-tab is currently open owns the "refresh after an edit/done
+// action" responsibility — edit/done actions can be triggered from any of
+// Today, Calendar, or Insights, so there's no single shared render function.
+function refreshCurrentTaskView(){
+  if(_currentPage==='today') renderToday();
+  else if(_currentPage==='calendar') renderCalendar();
+  else if(_currentPage==='insights') renderInsights();
+}
+
+// ── Today sub-tab ───────────────────────────────────────────────────────────
+function renderToday(){
+  const overdue=_tasks.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline<0);
+  const dueToday=_tasks.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline===0);
+  const upcoming=_tasks.filter(t=>t.daysUntilDeadline==null || t.daysUntilDeadline>0);
+
+  const parts=[];
+  if(overdue.length) parts.push(`<span style="color:#D85A30">${overdue.length} overdue</span>`);
+  if(dueToday.length) parts.push(`<span style="color:#C99A2E">${dueToday.length} due today</span>`);
+  parts.push(`<span style="color:#6B6A66">${upcoming.length} upcoming</span>`);
+  document.getElementById('today-summary-bar').innerHTML=parts.join(' &middot; ');
+
+  const empty=overdue.length===0 && dueToday.length===0;
+  document.getElementById('today-empty').style.display=empty?'block':'none';
+  document.getElementById('today-overdue-section').style.display=overdue.length?'block':'none';
+  document.getElementById('today-duetoday-section').style.display=dueToday.length?'block':'none';
+
+  document.getElementById('today-overdue-list').innerHTML=overdue.map(t=>taskCardHTML(t,{highlight:true})).join('');
+  document.getElementById('today-duetoday-list').innerHTML=dueToday.map(t=>taskCardHTML(t,{highlight:true})).join('');
+}
+
+// ── Calendar sub-tab ────────────────────────────────────────────────────────
+// A task's "display date" is the date its pill sits on: completion date for
+// done tasks (falls back to deadline if doneAt was never stored), deadline
+// for everything else. Tasks with neither don't appear on the calendar.
+function taskDisplayDate(t){
+  if(t.status==='done') return taskDoneDateStr(t)||t.deadlineDate||null;
+  return t.deadlineDate||null;
+}
+function taskPillStyle(t,todayStr){
+  if(t.status==='done') return {bg:'#1D9E75',fg:'#FFFFFF',label:'done'};
+  const dd=t.deadlineDate;
+  if(dd && dd<todayStr) return {bg:'#D85A30',fg:'#FFFFFF',label:'overdue'};
+  if(dd && dd===todayStr) return {bg:'#C99A2E',fg:'#FFFFFF',label:'due today'};
+  if(isTaskPostponed(t)) return {bg:'#ADABA3',fg:'#FFFFFF',label:'postponed'};
+  return {bg:'#F0EFEA',fg:'#1A1A18',label:'upcoming'};
+}
+function taskMatchesCalFilter(t,todayStr){
+  if(_calFilter==='all') return true;
+  if(_calFilter==='pending') return t.status==='pending';
+  if(_calFilter==='done') return t.status==='done';
+  if(_calFilter==='overdue') return t.status==='pending' && t.deadlineDate && t.deadlineDate<todayStr;
+  if(_calFilter==='postponed') return isTaskPostponed(t);
+  return true;
+}
+function setCalFilter(f){
+  _calFilter=f;
+  document.querySelectorAll('#cal-filter-bar .pill').forEach(p=>p.classList.toggle('active',p.dataset.filter===f));
+  renderCalendar();
+}
+function setCalView(v){
+  _calView=v;
+  document.querySelectorAll('#cal-view-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.view===v));
+  document.getElementById('cal-grid-view').style.display=v==='grid'?'block':'none';
+  document.getElementById('cal-agenda-view').style.display=v==='agenda'?'block':'none';
+  renderCalendar();
+}
+function calNavMonth(delta){
+  _calMonth+=delta;
+  if(_calMonth<0){_calMonth=11;_calYear--;}
+  else if(_calMonth>11){_calMonth=0;_calYear++;}
+  _calExpandedDay=null;
+  renderCalendar();
+}
+function calToggleDayPopover(dateStr){
+  _calExpandedDay=_calExpandedDay===dateStr?null:dateStr;
+  renderCalendar();
+}
+const MONTH_NAMES=['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function renderCalendar(){
+  const todayStr=today();
+  document.getElementById('cal-month-label').textContent=`${MONTH_NAMES[_calMonth]} ${_calYear}`;
+  const byDate={};
+  _tasksAll.forEach(t=>{
+    const d=taskDisplayDate(t);
+    if(!d) return;
+    if(!taskMatchesCalFilter(t,todayStr)) return;
+    (byDate[d]=byDate[d]||[]).push(t);
+  });
+  if(_calView==='grid') renderCalGrid(byDate,todayStr);
+  else renderCalAgenda(byDate,todayStr);
+}
+
+function renderCalGrid(byDate,todayStr){
+  const first=new Date(_calYear,_calMonth,1);
+  const startWeekday=first.getDay();
+  const daysInMonth=new Date(_calYear,_calMonth+1,0).getDate();
+  const cells=[];
+  for(let i=0;i<startWeekday;i++) cells.push(null);
+  for(let d=1;d<=daysInMonth;d++) cells.push(d);
+  while(cells.length%7!==0) cells.push(null);
+
+  let html='<div class="cal-grid-head">'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div>${d}</div>`).join('')+'</div>';
+  html+='<div class="cal-grid">';
+  cells.forEach(d=>{
+    if(d===null){ html+='<div class="cal-cell cal-cell-empty"></div>'; return; }
+    const dateStr=`${_calYear}-${String(_calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const tasks=byDate[dateStr]||[];
+    const isToday=dateStr===todayStr;
+    const shown=tasks.slice(0,3);
+    const rest=tasks.length-shown.length;
+    let pillsHtml=shown.map(t=>{
+      const s=taskPillStyle(t,todayStr);
+      return `<div class="cal-pill" style="background:${s.bg};color:${s.fg}" title="${escAttr(t.desc)}" onclick="toggleTaskEdit(${t.id})">${t.desc}</div>`;
+    }).join('');
+    if(rest>0){
+      pillsHtml+=`<div class="cal-pill cal-pill-more" onclick="calToggleDayPopover('${dateStr}')">+${rest} more</div>`;
+      if(_calExpandedDay===dateStr){
+        const restHtml=tasks.slice(3).map(t=>{
+          const s=taskPillStyle(t,todayStr);
+          return `<div class="cal-pill" style="background:${s.bg};color:${s.fg}" title="${escAttr(t.desc)}" onclick="toggleTaskEdit(${t.id})">${t.desc}</div>`;
+        }).join('');
+        pillsHtml+=`<div class="cal-popover">${restHtml}</div>`;
+      }
+    }
+    html+=`<div class="cal-cell${isToday?' cal-cell-today':''}">
+      <div class="cal-cell-num">${d}</div>
+      <div class="cal-cell-pills">${pillsHtml}</div>
+    </div>`;
+  });
+  html+='</div>';
+  document.getElementById('cal-grid-view').innerHTML=html;
+}
+
+function renderCalAgenda(byDate,todayStr){
+  const dates=Object.keys(byDate).sort();
+  if(dates.length===0){
+    document.getElementById('cal-agenda-view').innerHTML='<div class="no-entries">No tasks to show.</div>';
+    return;
+  }
+  let html='';
+  dates.forEach(dateStr=>{
+    const tasks=byDate[dateStr];
+    html+=`<div class="task-group-header">${dateStr}${dateStr===todayStr?' (today)':''}</div>`;
+    html+='<div class="entries-list" style="margin-bottom:14px">';
+    html+=tasks.map(t=>taskCardHTML(t,{highlight:true})).join('');
+    html+='</div>';
+  });
+  document.getElementById('cal-agenda-view').innerHTML=html;
+}
+
+// ── Insights sub-tab ────────────────────────────────────────────────────────
+function dateStrAddDays(dateStr,delta){
+  const d=new Date(dateStr+'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate()+delta);
+  return d.toISOString().split('T')[0];
+}
+function computeStreak(){
+  const doneDates=new Set(_tasksAll.filter(t=>t.status==='done').map(t=>taskDoneDateStr(t)).filter(Boolean));
+  const todayStr=today();
+  let cursor=doneDates.has(todayStr)?todayStr:dateStrAddDays(todayStr,-1);
+  let streak=0;
+  while(doneDates.has(cursor)){
+    streak++;
+    cursor=dateStrAddDays(cursor,-1);
+  }
+  return streak;
+}
+
+function renderInsightsStreak(){
+  const streak=computeStreak();
+  document.getElementById('insights-streak-num').textContent=streak;
+  document.getElementById('insights-streak-sub').textContent=streak===0
+    ?'No active streak — complete a task today to start one.'
+    :`day${streak===1?'':'s'} in a row with a task completed`;
+}
+
+function insightsAvailableMonths(){
+  const set=new Set();
+  _tasksAll.forEach(t=>{ if(t.deadlineDate) set.add(t.deadlineDate.slice(0,7)); });
+  set.add(today().slice(0,7));
+  return [...set].sort();
+}
+function setInsightsMonth(m){
+  _insightsMonth=m;
+  renderInsights();
+}
+function renderInsightsCompletion(){
+  const months=insightsAvailableMonths();
+  document.getElementById('insights-month-pills').innerHTML=months.map(m=>
+    `<span class="pill${m===_insightsMonth?' active':''}" onclick="setInsightsMonth('${m}')">${m}</span>`
+  ).join('');
+
+  const todayStr=today();
+  const inMonth=_tasksAll.filter(t=>t.deadlineDate && t.deadlineDate.slice(0,7)===_insightsMonth);
+  let onTime=0,late=0,overdueIncomplete=0;
+  inMonth.forEach(t=>{
+    if(t.status==='done'){
+      const cd=taskDoneDateStr(t);
+      if(cd && t.deadlineDate && cd>t.deadlineDate) late++; else onTime++;
+    }else if(t.deadlineDate<todayStr){
+      overdueIncomplete++;
+    }
+  });
+  const total=onTime+late+overdueIncomplete;
+  const pct=n=>total?Math.round(n/total*100):0;
+  const card=document.getElementById('insights-completion-card');
+  if(total===0){
+    card.innerHTML='<div class="no-entries">No tasks due this month.</div>';
+    return;
+  }
+  card.innerHTML=`
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <div class="entry-meta" style="margin-bottom:4px">On-time · ${onTime} (${pct(onTime)}%)</div>
+        <div class="bar-wrap"><div style="width:${pct(onTime)}%;height:4px;background:#1D9E75;border-radius:2px"></div></div>
+      </div>
+      <div>
+        <div class="entry-meta" style="margin-bottom:4px">Late · ${late} (${pct(late)}%)</div>
+        <div class="bar-wrap"><div style="width:${pct(late)}%;height:4px;background:#C99A2E;border-radius:2px"></div></div>
+      </div>
+      <div>
+        <div class="entry-meta" style="margin-bottom:4px">Overdue, still incomplete · ${overdueIncomplete} (${pct(overdueIncomplete)}%)</div>
+        <div class="bar-wrap"><div style="width:${pct(overdueIncomplete)}%;height:4px;background:#D85A30;border-radius:2px"></div></div>
+      </div>
+    </div>`;
+}
+
+function renderInsightsClients(){
+  const byClient={};
+  _tasksAll.forEach(t=>{
+    const c=t.client||'(no client)';
+    byClient[c]=byClient[c]||{count:0,done:0,onTime:0};
+    byClient[c].count++;
+    if(t.status==='done'){
+      byClient[c].done++;
+      const cd=taskDoneDateStr(t);
+      if(!t.deadlineDate || (cd && cd<=t.deadlineDate)) byClient[c].onTime++;
+    }
+  });
+  const rows=Object.entries(byClient).sort((a,b)=>b[1].count-a[1].count);
+  const el=document.getElementById('insights-client-chart');
+  if(rows.length===0){ el.innerHTML='<div class="no-entries">No tasks yet.</div>'; return; }
+  const maxCount=Math.max(...rows.map(r=>r[1].count));
+  el.innerHTML=rows.map(([client,d])=>{
+    const onTimePct=d.done?Math.round(d.onTime/d.done*100):null;
+    const w=Math.round(d.count/maxCount*100);
+    return `<div class="entry-row" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div class="entry-meta">${client} · ${d.count} task${d.count===1?'':'s'}${onTimePct!=null?` · ${onTimePct}% on-time`:''}</div>
+      <div class="bar-wrap"><div style="width:${w}%;height:4px;background:#1A1A18;border-radius:2px"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderInsightsPostponed(){
+  const rows=_tasksAll.filter(t=>(t.postponeCount||0)>0).sort((a,b)=>(b.postponeCount||0)-(a.postponeCount||0));
+  const el=document.getElementById('insights-postpone-list');
+  if(rows.length===0){ el.innerHTML='<div class="no-entries">No postponed tasks.</div>'; return; }
+  el.innerHTML=rows.map(t=>`<div class="entry-row">
+    <div style="flex:1;min-width:0">
+      <div class="entry-desc">${t.desc}</div>
+      <div class="entry-meta">postponed ${t.postponeCount}× ${t.client?' · '+t.client:''} · ${t.status==='done'?'completed':'still pending'}${t.deadlineDate?' · due '+t.deadlineDate:''}</div>
+    </div>
+  </div>`).join('');
+}
+
+function renderInsightsHeatmap(){
+  const todayStr=today();
+  const start=dateStrAddDays(todayStr,-83);
+  const startDate=new Date(start+'T00:00:00');
+  const leadingBlanks=startDate.getDay();
+  const doneCountByDate={};
+  _tasksAll.filter(t=>t.status==='done').forEach(t=>{
+    const d=taskDoneDateStr(t);
+    if(d) doneCountByDate[d]=(doneCountByDate[d]||0)+1;
+  });
+  const missedDates=new Set(
+    _tasksAll.filter(t=>t.status==='pending' && t.deadlineDate && t.deadlineDate<todayStr).map(t=>t.deadlineDate)
+  );
+  const cellColor=(count,missed)=>{
+    if(missed && !count) return '#F0997B';
+    if(count===0) return '#E4E2DA';
+    if(count===1) return '#A7DECB';
+    if(count<=3) return '#5DCAA5';
+    return '#1D9E75';
+  };
+  let cells='';
+  let total=0;
+  for(let i=0;i<leadingBlanks;i++) cells+='<div class="heatmap-cell" style="background:transparent"></div>';
+  for(let i=0;i<84;i++){
+    const d=dateStrAddDays(start,i);
+    const count=doneCountByDate[d]||0;
+    total+=count;
+    cells+=`<div class="heatmap-cell" style="background:${cellColor(count,missedDates.has(d))}" title="${d}: ${count} completed"></div>`;
+  }
+  document.getElementById('insights-heatmap').innerHTML=`<div class="heatmap-grid">${cells}</div>`;
+  document.getElementById('insights-heatmap-total').textContent=`${total} task${total===1?'':'s'} completed in the last 12 weeks`;
+}
+
+function renderInsightsMonthlyChart(){
+  const counts={};
+  _tasksAll.filter(t=>t.status==='done').forEach(t=>{
+    const d=taskDoneDateStr(t);
+    if(!d) return;
+    const m=d.slice(0,7);
+    counts[m]=(counts[m]||0)+1;
+  });
+  const months=Object.keys(counts).sort();
+  if(months.length===0){
+    const canvas=document.getElementById('insights-monthly-chart');
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    return;
+  }
+  if(chartInst5)chartInst5.destroy();
+  chartInst5=new Chart(document.getElementById('insights-monthly-chart'),{
+    type:'bar',
+    data:{labels:months,datasets:[{label:'Completed',data:months.map(m=>counts[m]),backgroundColor:'#1D9E75',borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'#E4E2DA'},ticks:{stepSize:1}}}}
+  });
+}
+
+function renderInsights(){
+  renderInsightsStreak();
+  renderInsightsCompletion();
+  renderInsightsClients();
+  renderInsightsPostponed();
+  renderInsightsHeatmap();
+  renderInsightsMonthlyChart();
+}
+
+function findTaskById(id){
+  return _tasks.find(x=>String(x.id)===String(id)) || _tasksAll.find(x=>String(x.id)===String(id));
+}
+
 function toggleTaskEdit(id){
-  const t=_tasks.find(x=>String(x.id)===String(id));
+  const t=findTaskById(id);
   if(!t) return;
   _editingTaskId=id;
   _taskEditType=t.deadlineType||'soft';
-  renderTasksView();
+  refreshCurrentTaskView();
 }
 function cancelTaskEdit(){
   _editingTaskId=null;
-  renderTasksView();
+  refreshCurrentTaskView();
 }
 function setTaskEditType(type){
   _taskEditType=type;
-  renderTasksView();
+  refreshCurrentTaskView();
 }
 
 async function saveTaskEdit(id){
@@ -966,7 +1357,7 @@ async function saveTaskEdit(id){
   const hoursVal=document.getElementById(`te-hours-${id}`).value;
   const estimateMinutes=hoursVal?Math.round(parseFloat(hoursVal)*60):null;
   const patch={desc,client,deadlineDate,deadlineType:_taskEditType,status,estimateMinutes};
-  if(status==='done') patch.doneAt=Date.now();
+  if(status==='done') patch.doneAt=new Date().toISOString();
   try{
     await fetch(`${TASKS_API}?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   }catch(e){
@@ -977,16 +1368,21 @@ async function saveTaskEdit(id){
     if(status==='done') _tasks.splice(idx,1);
     else _tasks[idx]={..._tasks[idx],...patch};
   }
+  const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
+  if(idxAll>=0) _tasksAll[idxAll]={..._tasksAll[idxAll],...patch};
   _editingTaskId=null;
-  renderTasksView();
+  refreshCurrentTaskView();
 }
 
 async function markTaskDone(id){
   const idx=_tasks.findIndex(x=>String(x.id)===String(id));
   if(idx>=0) _tasks.splice(idx,1);
-  renderTasksView();
+  const doneAt=new Date().toISOString();
+  const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
+  if(idxAll>=0) _tasksAll[idxAll]={..._tasksAll[idxAll],status:'done',doneAt};
+  refreshCurrentTaskView();
   try{
-    await fetch(`${TASKS_API}?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'done',doneAt:Date.now()})});
+    await fetch(`${TASKS_API}?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'done',doneAt})});
   }catch(e){
     console.error('mark done failed',e);
   }
@@ -1519,7 +1915,9 @@ function showPage(name){
   document.getElementById('page-'+name).classList.add('active');
   document.querySelectorAll('.tab').forEach(t=>{if(t.dataset.page===name)t.classList.add('active');});
   if(name==='overview')renderOverview();
-  if(name==='tasks')loadTasks();
+  if(name==='today')loadTasksForToday();
+  if(name==='calendar')loadTasksForCalendar();
+  if(name==='insights')loadTasksForInsights();
   if(name==='records'){populateRecordFilters(getEntries());renderRecords();}
   if(name==='reports')renderReports();
 }
@@ -1538,7 +1936,7 @@ function showCategory(cat){
   document.getElementById('finance-lock').style.display='none';
   document.getElementById('finance-tabs').style.display=cat==='finance'?'':'none';
   document.getElementById('productivity-tabs').style.display=cat==='productivity'?'':'none';
-  showPage(cat==='finance'?'overview':'tasks');
+  showPage(cat==='finance'?'overview':'today');
 }
 
 // ── Lock screen (Finance only — Productivity/Tasks is never gated) ────────────
