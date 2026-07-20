@@ -3,7 +3,7 @@ const { hktNow, daysBetween } = require('../lib/time');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -35,6 +35,13 @@ module.exports = async (req, res) => {
     const task = await tasksRepo.updateTask(id, patch);
     if (!task) return res.status(404).json({ error: 'task not found' });
     return res.status(200).json({ ok: true, task });
+  }
+
+  if (req.method === 'DELETE') {
+    const { id } = req.query;
+    if (!id) return res.status(400).json({ error: 'missing id' });
+    await tasksRepo.deleteTask(id);
+    return res.status(200).json({ ok: true });
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
