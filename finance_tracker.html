@@ -1019,6 +1019,7 @@ function taskEditFormHTML(t){
       </div>
       <div class="form-group"><label>Est. hours</label><input type="number" id="te-hours-${t.id}" value="${hours}" min="0" step="0.25"/></div>
     </div>
+    <div class="form-group"><label>Completed on (only applies when status is Done)</label><input type="date" id="te-doneat-${t.id}" value="${taskDoneDateStr(t)||''}"/></div>
     <div class="type-toggle">
       <button class="btn ${_taskEditType==='hard'?'exp':''}" onclick="setTaskEditType('hard')">🔴 Hard</button>
       <button class="btn ${_taskEditType==='soft'?'inc':''}" onclick="setTaskEditType('soft')">🟡 Soft</button>
@@ -1402,8 +1403,12 @@ async function saveTaskEdit(id){
   const status=document.getElementById(`te-status-${id}`).value;
   const hoursVal=document.getElementById(`te-hours-${id}`).value;
   const estimateMinutes=hoursVal?Math.round(parseFloat(hoursVal)*60):null;
+  const doneAtDate=document.getElementById(`te-doneat-${id}`).value;
   const patch={desc,client,deadlineDate,deadlineType:_taskEditType,status,estimateMinutes};
-  if(status==='done') patch.doneAt=new Date().toISOString();
+  if(status==='done'){
+    const original=findTaskById(id);
+    patch.doneAt=doneAtDate?`${doneAtDate}T00:00:00.000Z`:(original&&original.doneAt)||new Date().toISOString();
+  }
   try{
     await fetch(`${TASKS_API}?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)});
   }catch(e){
