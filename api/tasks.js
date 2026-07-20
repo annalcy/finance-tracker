@@ -3,9 +3,16 @@ const { hktNow, daysBetween } = require('../lib/time');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  if (req.method === 'POST') {
+    const body = req.body || {};
+    if (!body.desc) return res.status(400).json({ error: 'missing desc' });
+    const task = await tasksRepo.createTask(body);
+    return res.status(201).json({ ok: true, task });
+  }
 
   if (req.method === 'GET') {
     const tasks = await tasksRepo.getCachedTasks();
