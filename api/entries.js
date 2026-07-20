@@ -1,13 +1,4 @@
-const admin = require('firebase-admin');
-
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(
-      JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-    ),
-  });
-}
-const db = admin.firestore();
+const { db } = require('../lib/firebase');
 
 // All entries are cached in a single Firestore document — 1 read per GET
 // instead of 1 read per entry (was 1,400+ reads per poll).
