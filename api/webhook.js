@@ -320,6 +320,30 @@ async function sendTaskConfirmation(ctx, task, editExisting = false) {
   return ctx.reply(text, { parse_mode: 'Markdown', ...keyboard });
 }
 
+// Asks for whatever's still missing (deadline type, then estimate) before
+// showing the confirmation card — mirrors the finance flow's clarify_type
+// pattern (api/webhook.js clarify_type stage) rather than silently guessing.
+async function proceedAfterTaskParse(ctx, task) {
+  const userId = ctx.from.id;
+  if (!task.deadlineType) {
+    await setSession(userId, { flow: 'task', stage: 'task_clarify_type', task });
+    await ctx.reply(
+      `"${task.desc}" — is this a hard deadline (can't move) or a soft target (flexible)?`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('🔴 Hard deadline', 'task_type_hard')],
+        [Markup.button.callback('🟡 Soft target', 'task_type_soft')],
+      ])
+    );
+    return;
+  }
+  if (task.estimateMinutes === null || task.estimateMinutes === undefined) {
+    await setSession(userId, { flow: 'task', stage: 'task_need_estimate', task });
+    await ctx.reply(`Got "${task.desc}" — how long do you think this'll take? e.g. "2 hours", "90m"`);
+    return;
+  }
+  await sendTaskConfirmation(ctx, task);
+}
+
 // ── Commands ───────────────────────────────────────────────────────────────────
 bot.start(ctx =>
   ctx.reply(
@@ -488,12 +512,7 @@ bot.command('addtask', async ctx => {
   if (inline) {
     const { date: todayStr } = hktNow();
     const parsed = parseTaskText(inline, todayStr);
-    if (parsed.estimateMinutes === null) {
-      await setSession(ctx.from.id, { flow: 'task', stage: 'task_need_estimate', task: parsed });
-      await ctx.reply(`Got "${parsed.desc}" — how long do you think this'll take? e.g. "2 hours", "90m"`);
-      return;
-    }
-    await sendTaskConfirmation(ctx, parsed);
+    await proceedAfterTaskParse(ctx, parsed);
     return;
   }
   await setSession(ctx.from.id, { flow: 'task', stage: 'task_awaiting_text' });
@@ -638,12 +657,7 @@ bot.on('text', async ctx => {
     if (state.stage === 'task_awaiting_text') {
       const { date: todayStr } = hktNow();
       const parsed = parseTaskText(text, todayStr);
-      if (parsed.estimateMinutes === null) {
-        await setSession(userId, { flow: 'task', stage: 'task_need_estimate', task: parsed });
-        await ctx.reply(`Got "${parsed.desc}" — how long do you think this'll take? e.g. "2 hours", "90m"`);
-        return;
-      }
-      await sendTaskConfirmation(ctx, parsed);
+      await proceedAfterTaskParse(ctx, parsed);
       return;
     }
     if (state.stage === 'task_need_estimate') {
@@ -653,7 +667,7 @@ bot.on('text', async ctx => {
         return;
       }
       state.task.estimateMinutes = minutes;
-      await sendTaskConfirmation(ctx, state.task);
+      await proceedAfterTaskParse(ctx, state.task);
       return;
     }
     if (state.stage === 'task_edit_title') {
@@ -1032,6 +1046,24 @@ bot.action('task_cancel', async ctx => {
   await clearSession(ctx.from.id);
   await ctx.editMessageText('Cancelled.');
   ctx.answerCbQuery();
+});
+
+bot.action('task_type_hard', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.task) return ctx.reply('Session expired — please try again.');
+  state.task.deadlineType = 'hard';
+  await ctx.editMessageText(`🔴 HARD — ${state.task.desc}`);
+  await proceedAfterTaskParse(ctx, state.task);
+});
+
+bot.action('task_type_soft', async ctx => {
+  await ctx.answerCbQuery();
+  const state = await getSession(ctx.from.id);
+  if (!state || !state.task) return ctx.reply('Session expired — please try again.');
+  state.task.deadlineType = 'soft';
+  await ctx.editMessageText(`🟡 SOFT — ${state.task.desc}`);
+  await proceedAfterTaskParse(ctx, state.task);
 });
 
 bot.action('task_switch_type', async ctx => {
