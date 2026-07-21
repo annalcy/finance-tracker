@@ -44,6 +44,9 @@ module.exports = async (req, res) => {
       linkedEntryId: body.linkedEntryId ?? existing.data()?.linkedEntryId ?? null,
       notes: body.notes ?? existing.data()?.notes ?? '',
       followUpSentAt: body.followUpSentAt ?? existing.data()?.followUpSentAt ?? null,
+      description: body.description ?? existing.data()?.description ?? '',
+      source: body.source ?? existing.data()?.source ?? 'manual',
+      taskId: body.taskId ?? existing.data()?.taskId ?? null,
       createdAt: existing.exists ? existing.data().createdAt : now,
     };
     await docRef.set(invoice);
