@@ -258,8 +258,11 @@
   </div>
 
   <div id="page-insights" class="page">
-    <!-- 1. AI Analysis -->
-    <div class="form-card" id="insights-ai-card"></div>
+    <!-- 1. Productivity insights (local, rule-based — no external API) -->
+    <div class="section-title">Productivity insights</div>
+    <div class="form-card">
+      <div id="insights-summary-text" style="font-size:13px;line-height:1.7;color:#1A1A18"></div>
+    </div>
 
     <!-- 2. Streak -->
     <div class="form-card" style="text-align:center" id="insights-streak-card">
@@ -516,7 +519,6 @@ let _goal=null, _invoices=[], _tasks=[], _tasksAll=[];
 let _editingTaskId=null, _taskEditType='soft';
 let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calSelectedDay=null;
 let _calAddingTask=false, _addTaskType='soft';
-let _aiAnalysisText=null, _aiAnalysisTime=null, _aiAnalysisLoading=false, _aiAnalysisError=false, _aiAnalysisFetchedOnce=false;
 let _insightsMonth=_todayParts[0]+'-'+String(_todayParts[1]).padStart(2,'0');
 
 const SEED_DATA = [
@@ -1313,7 +1315,6 @@ function renderCalAgenda(byDate,todayStr){
 }
 
 // ── Insights sub-tab ────────────────────────────────────────────────────────
-const AI_INSIGHTS_API = 'https://finance-tracker-anna-li.vercel.app/api/ai-insights';
 const CLIENT_ALIASES = {
   ck:'CK', drip:'Drip Music', 'drip music':'Drip Music', lawrence:'Lawrence', sony:'Sony',
   cbeauty:'Cbeauty', momo:'Momo', isnhk:'ISNHK', minizine:'Minizine', interlude:'Interlude', sam:'Sam',
@@ -1343,59 +1344,66 @@ function computeStreak(){
   return streak;
 }
 
-// ── 1. AI Analysis ──────────────────────────────────────────────────────────
-function buildAiTaskSummary(){
-  return _tasksAll.map(t=>({
-    description:t.desc,
-    client:t.client||'',
-    deadline:t.deadlineDate||null,
-    status:t.status,
-    estimatedHours:t.estimateMinutes?Math.round(t.estimateMinutes/60*10)/10:null,
-    completedDate:taskDoneDateStr(t),
-    postponeCount:t.postponeCount||0,
-    createdAt:t.createdAt||null,
-  }));
-}
-async function loadAiAnalysis(force){
-  if(_aiAnalysisFetchedOnce && !force){ renderAiAnalysisCard(); return; }
-  _aiAnalysisLoading=true; _aiAnalysisError=false;
-  renderAiAnalysisCard();
-  try{
-    const res=await fetch(AI_INSIGHTS_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tasks:buildAiTaskSummary(),today:today()})});
-    if(!res.ok) throw new Error('bad status');
-    const data=await res.json();
-    _aiAnalysisText=data.text;
-    _aiAnalysisTime=new Date();
-    _aiAnalysisFetchedOnce=true;
-  }catch(e){
-    _aiAnalysisError=true;
-  }
-  _aiAnalysisLoading=false;
-  renderAiAnalysisCard();
-}
-function refreshAiAnalysis(){ loadAiAnalysis(true); }
+// ── 1. Productivity insights (local, rule-based — mirrors Finance's
+// generateInsightsLines pattern: a handful of short, data-driven lines,
+// computed entirely client-side, nothing that can be "unavailable") ────────
+function generateProductivityInsightLines(){
+  if(_tasksAll.length===0) return [];
+  const lines=[];
+  const todayStr=today();
+  const weekStart=dateStrAddDays(todayStr,-6);
 
-function renderAiAnalysisCard(){
-  const el=document.getElementById('insights-ai-card');
-  const now=new Date();
-  const dateLabel=`${MONTH_NAMES[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
-  let body;
-  if(_aiAnalysisLoading){
-    body=`<div class="no-entries" style="padding:1rem 0">Analysing your tasks...</div>`;
-  }else if(_aiAnalysisError){
-    body=`<div style="color:#D85A30;font-size:13px;margin-bottom:8px">Analysis unavailable. Check connection.</div>
-      <button class="btn" onclick="refreshAiAnalysis()">Retry</button>`;
-  }else if(_aiAnalysisText){
-    const timeLabel=_aiAnalysisTime?_aiAnalysisTime.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
-    body=`<div style="font-size:14px;line-height:1.6;margin-bottom:10px">${_aiAnalysisText}</div>
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div class="entry-meta">Last updated: ${timeLabel}</div>
-        <button class="btn" onclick="refreshAiAnalysis()">Refresh ↻</button>
-      </div>`;
-  }else{
-    body='';
+  const dueThisWeek=_tasksAll.filter(t=>t.deadlineDate && t.deadlineDate>=weekStart && t.deadlineDate<=todayStr);
+  if(dueThisWeek.length){
+    const doneCount=dueThisWeek.filter(t=>t.status==='done').length;
+    const pct=Math.round(doneCount/dueThisWeek.length*100);
+    if(pct>=80) lines.push(`✓ Completed ${doneCount} of ${dueThisWeek.length} tasks due this week (${pct}%) — on pace.`);
+    else if(pct>=50) lines.push(`→ Completed ${doneCount} of ${dueThisWeek.length} tasks due this week (${pct}%).`);
+    else lines.push(`⚠️ Only ${doneCount} of ${dueThisWeek.length} tasks due this week are done (${pct}%) — falling behind.`);
   }
-  el.innerHTML=`<div class="section-title" style="margin-bottom:8px">AI Analysis — ${dateLabel}</div>${body}`;
+
+  const monthStr=todayStr.slice(0,7);
+  const hoursByClient={};
+  _tasksAll.forEach(t=>{
+    if(!t.estimateMinutes || t.estimateMinutes<=0) return;
+    if(!t.deadlineDate || t.deadlineDate.slice(0,7)!==monthStr) return;
+    const c=normalizeClientName(t.client);
+    hoursByClient[c]=(hoursByClient[c]||0)+t.estimateMinutes/60;
+  });
+  const topClient=Object.entries(hoursByClient).sort((a,b)=>b[1]-a[1])[0];
+  if(topClient) lines.push(`🕒 ${topClient[0]} is taking the most of your time this month — ${Math.round(topClient[1]*10)/10} hrs logged.`);
+
+  const overdue=_tasksAll.filter(t=>t.status==='pending' && t.deadlineDate && t.deadlineDate<todayStr)
+    .sort((a,b)=>a.deadlineDate.localeCompare(b.deadlineDate));
+  if(overdue.length){
+    const oldest=overdue[0];
+    const daysOverdue=daysBetweenDates(oldest.deadlineDate,todayStr);
+    lines.push(`⚠️ ${overdue.length} task${overdue.length===1?'':'s'} overdue — "${oldest.desc}" (${normalizeClientName(oldest.client)}) is the oldest, ${daysOverdue} days overdue.`);
+  }else{
+    lines.push(`✓ No overdue tasks right now.`);
+  }
+
+  const heavilyPostponed=_tasksAll.filter(t=>(t.postponeCount||0)>=3).sort((a,b)=>(b.postponeCount||0)-(a.postponeCount||0));
+  if(heavilyPostponed.length){
+    const w=heavilyPostponed[0];
+    lines.push(`🔁 "${w.desc}" (${normalizeClientName(w.client)}) has been postponed ${w.postponeCount} times — worth deciding whether it still needs doing.`);
+  }
+
+  if(overdue.length){
+    const priority=overdue.find(t=>t.deadlineType==='hard')||overdue[0];
+    lines.push(`→ Tackle "${priority.desc}" (${normalizeClientName(priority.client)}) first — ${priority.deadlineType==='hard'?'a hard deadline and ':''}your most overdue item.`);
+  }else{
+    const dueToday=_tasksAll.filter(t=>t.status==='pending' && t.deadlineDate===todayStr);
+    if(dueToday.length) lines.push(`→ Start with "${dueToday[0].desc}" (${normalizeClientName(dueToday[0].client)}) — due today.`);
+  }
+
+  return lines;
+}
+
+function renderProductivityInsight(){
+  const lines=generateProductivityInsightLines();
+  const el=document.getElementById('insights-summary-text');
+  el.innerHTML=lines.length?lines.map(l=>`<div style="margin-bottom:8px">${l}</div>`).join(''):'<span style="color:#6B6A66">Not enough data yet for insights.</span>';
 }
 
 // ── 2. Streak ────────────────────────────────────────────────────────────────
@@ -1694,7 +1702,7 @@ function renderInsightsHeatmap(){
 }
 
 function renderInsights(){
-  loadAiAnalysis(false);
+  renderProductivityInsight();
   renderInsightsStreak();
   renderInsightsPressure();
   renderInsightsOverdueTracker();
