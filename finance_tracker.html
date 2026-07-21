@@ -149,8 +149,8 @@
   <p class="subtitle">Finance & productivity, all in one place</p>
   <div class="data-note">Synced live to your Firebase backend — entries, invoices, and tasks logged via Telegram show up here automatically, no manual export needed.</div>
   <div class="category-tabs">
+    <button class="category-tab" data-category="productivity" onclick="showCategory('productivity')">🔥 Productivity</button>
     <button class="category-tab active" data-category="finance" onclick="showCategory('finance')">💰 Finance</button>
-    <button class="category-tab" data-category="productivity" onclick="showCategory('productivity')">✅ Productivity</button>
   </div>
 
   <div id="finance-lock" class="lock-card" style="margin:2rem auto;display:none">
@@ -1063,6 +1063,7 @@ function taskEditFormHTML(t){
       <button class="btn ${_taskEditType==='soft'?'inc':''}" onclick="setTaskEditType('soft')">🟡 Soft</button>
     </div>
     <div class="btn-row">
+      <button class="btn" onclick="deleteTask(${t.id})" style="color:#D85A30;border-color:#F0997B;margin-right:auto">Delete</button>
       <button class="btn" onclick="cancelTaskEdit()">Cancel</button>
       <button class="btn primary" onclick="saveTaskEdit(${t.id})">Save</button>
     </div>
@@ -1775,6 +1776,21 @@ async function markTaskDone(id){
     await fetch(`${TASKS_API}?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'done',doneAt})});
   }catch(e){
     console.error('mark done failed',e);
+  }
+}
+
+async function deleteTask(id){
+  if(!confirm('Delete this task? This cannot be undone.')) return;
+  const idx=_tasks.findIndex(x=>String(x.id)===String(id));
+  if(idx>=0) _tasks.splice(idx,1);
+  const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
+  if(idxAll>=0) _tasksAll.splice(idxAll,1);
+  _editingTaskId=null;
+  refreshCurrentTaskView();
+  try{
+    await fetch(`${TASKS_API}?id=${id}`,{method:'DELETE'});
+  }catch(e){
+    console.error('delete task failed',e);
   }
 }
 
