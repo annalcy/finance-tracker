@@ -225,6 +225,11 @@
       <div class="section-title" style="margin-top:1.5rem;color:#6B6A66">Coming up · next 3 days</div>
       <div class="entries-list" id="today-upcoming-list"></div>
     </div>
+
+    <div id="today-done-section">
+      <div class="section-title" style="margin-top:1.5rem;color:#1D9E75">Completed today</div>
+      <div class="entries-list" id="today-done-list"></div>
+    </div>
   </div>
 
   <div id="page-calendar" class="page">
@@ -515,7 +520,7 @@ let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCateg
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
-let _goal=null, _invoices=[], _tasks=[], _tasksAll=[];
+let _goal=null, _invoices=[], _tasksAll=[];
 let _editingTaskId=null, _taskEditType='soft';
 let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calSelectedDay=null;
 let _calAddingTask=false, _addTaskType='soft';
@@ -698,7 +703,9 @@ async function _deleteDoc(id){
 }
 function renderCurrent(){
   if(_currentPage==='overview')renderOverview();
-  if(_currentPage==='tasks')loadTasks();
+  if(_currentPage==='today')loadTasksForToday();
+  if(_currentPage==='calendar')loadTasksForCalendar();
+  if(_currentPage==='insights')loadTasksForInsights();
   if(_currentPage==='records'){populateRecordFilters(_entries);renderRecords();}
   if(_currentPage==='reports')renderReports();
 }
@@ -958,14 +965,6 @@ function renderInvoicesView(){
 function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
 
 // ── Shared task data layer (feeds Today/Calendar/Insights) ────────────────────
-async function loadTasks(){
-  try{
-    const res=await fetch(TASKS_API);
-    _tasks=await res.json();
-  }catch(e){
-    _tasks=[];
-  }
-}
 async function loadTasksAll(){
   try{
     const res=await fetch(`${TASKS_API}?all=true`);
@@ -987,7 +986,7 @@ function isTaskPostponed(t){
 }
 
 async function loadTasksForToday(){
-  await loadTasks();
+  await loadTasksAll();
   renderToday();
 }
 async function loadTasksForCalendar(){
@@ -1081,26 +1080,32 @@ function refreshCurrentTaskView(){
 
 // ── Today sub-tab ───────────────────────────────────────────────────────────
 function renderToday(){
-  const overdue=_tasks.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline<0);
-  const dueToday=_tasks.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline===0);
-  const comingUp=_tasks.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline>=1 && t.daysUntilDeadline<=3);
-  const upcoming=_tasks.filter(t=>t.daysUntilDeadline==null || t.daysUntilDeadline>0);
+  const pending=_tasksAll.filter(t=>t.status==='pending');
+  const overdue=pending.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline<0);
+  const dueToday=pending.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline===0);
+  const comingUp=pending.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline>=1 && t.daysUntilDeadline<=3);
+  const upcoming=pending.filter(t=>t.daysUntilDeadline==null || t.daysUntilDeadline>0);
+  const todayStr=today();
+  const doneToday=_tasksAll.filter(t=>t.status==='done' && taskDoneDateStr(t)===todayStr);
 
   const parts=[];
   if(overdue.length) parts.push(`<span style="color:#D85A30">${overdue.length} overdue</span>`);
   if(dueToday.length) parts.push(`<span style="color:#C99A2E">${dueToday.length} due today</span>`);
   parts.push(`<span style="color:#6B6A66">${upcoming.length} upcoming</span>`);
+  if(doneToday.length) parts.push(`<span style="color:#1D9E75">${doneToday.length} completed</span>`);
   document.getElementById('today-summary-bar').innerHTML=parts.join(' &middot; ');
 
-  const empty=overdue.length===0 && dueToday.length===0;
+  const empty=overdue.length===0 && dueToday.length===0 && doneToday.length===0;
   document.getElementById('today-empty').style.display=empty?'block':'none';
   document.getElementById('today-overdue-section').style.display=overdue.length?'block':'none';
   document.getElementById('today-duetoday-section').style.display=dueToday.length?'block':'none';
   document.getElementById('today-upcoming-section').style.display=comingUp.length?'block':'none';
+  document.getElementById('today-done-section').style.display=doneToday.length?'block':'none';
 
   document.getElementById('today-overdue-list').innerHTML=overdue.map(t=>taskCardHTML(t,{highlight:true})).join('');
   document.getElementById('today-duetoday-list').innerHTML=dueToday.map(t=>taskCardHTML(t,{highlight:true})).join('');
   document.getElementById('today-upcoming-list').innerHTML=comingUp.map(t=>taskCardHTML(t,{highlight:true})).join('');
+  document.getElementById('today-done-list').innerHTML=doneToday.map(t=>taskCardHTML(t,{})).join('');
 }
 
 // ── Calendar sub-tab ────────────────────────────────────────────────────────
@@ -1222,7 +1227,6 @@ async function saveNewTask(){
   }
   task.daysUntilDeadline=task.deadlineDate?daysBetweenDates(today(),task.deadlineDate):null;
   _tasksAll.push(task);
-  if(task.status==='pending') _tasks.push(task);
   _calAddingTask=false;
   renderCalendar();
 }
@@ -1717,7 +1721,7 @@ function renderInsights(){
 }
 
 function findTaskById(id){
-  return _tasks.find(x=>String(x.id)===String(id)) || _tasksAll.find(x=>String(x.id)===String(id));
+  return _tasksAll.find(x=>String(x.id)===String(id));
 }
 
 function toggleTaskEdit(id){
@@ -1754,11 +1758,6 @@ async function saveTaskEdit(id){
   }catch(e){
     console.error('save task failed',e);
   }
-  const idx=_tasks.findIndex(x=>String(x.id)===String(id));
-  if(idx>=0){
-    if(status==='done') _tasks.splice(idx,1);
-    else _tasks[idx]={..._tasks[idx],...patch};
-  }
   const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
   if(idxAll>=0) _tasksAll[idxAll]={..._tasksAll[idxAll],...patch};
   _editingTaskId=null;
@@ -1766,8 +1765,6 @@ async function saveTaskEdit(id){
 }
 
 async function markTaskDone(id){
-  const idx=_tasks.findIndex(x=>String(x.id)===String(id));
-  if(idx>=0) _tasks.splice(idx,1);
   const doneAt=new Date().toISOString();
   const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
   if(idxAll>=0) _tasksAll[idxAll]={..._tasksAll[idxAll],status:'done',doneAt};
@@ -1781,8 +1778,6 @@ async function markTaskDone(id){
 
 async function deleteTask(id){
   if(!confirm('Delete this task? This cannot be undone.')) return;
-  const idx=_tasks.findIndex(x=>String(x.id)===String(id));
-  if(idx>=0) _tasks.splice(idx,1);
   const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
   if(idxAll>=0) _tasksAll.splice(idxAll,1);
   _editingTaskId=null;
