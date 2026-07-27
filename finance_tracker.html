@@ -151,19 +151,26 @@
   .data-note { font-size: 12px; color: var(--text-secondary); background: var(--warning-bg); border: 1px solid var(--warning-border); border-radius: 8px; padding: 10px 14px; margin-bottom: 1.5rem; }
   ::placeholder { color: var(--text-muted); }
 
-  .cal-grid-head { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; text-align: center; }
-  .cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
-  .cal-cell { position: relative; min-height: 84px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; transition: border-color .12s; box-shadow: 0 1px 2px rgba(var(--shadow-rgb),0.03); }
+  .cal-grid-head { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 6px; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; text-align: center; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 6px; }
+  .cal-cell { position: relative; min-height: 84px; min-width: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; transition: border-color .12s; box-shadow: 0 1px 2px rgba(var(--shadow-rgb),0.03); }
   .cal-cell:hover { border-color: var(--text-muted); }
   .cal-cell-empty { background: transparent; border: none; cursor: default; }
   .cal-cell-today { background: var(--surface-hover); border-color: var(--border-strong); }
   .cal-cell-selected { border-color: var(--ink); border-width: 2px; padding: 5px; }
   .cal-cell-num { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
   .cal-cell-today .cal-cell-num { color: var(--ink); }
-  .cal-cell-pills { display: flex; flex-direction: column; gap: 3px; }
-  .cal-pill { font-size: 10px; padding: 2px 6px; border-radius: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cal-cell-pills { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .cal-pill { font-size: 10px; padding: 2px 6px; border-radius: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .cal-pill-more { background: var(--surface-hover); color: var(--text-secondary); font-weight: 600; }
-  @media (max-width: 640px) { .cal-cell { min-height: 60px; } .cal-cell-pills { display: none; } .cal-cell.cal-cell-today .cal-cell-pills { display: flex; } }
+  .cal-cell-dots { display: none; flex-wrap: wrap; gap: 3px; margin-top: auto; }
+  .cal-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .cal-dot-more { font-size: 8px; font-weight: 700; color: var(--text-secondary); line-height: 6px; }
+  @media (max-width: 640px) {
+    .cal-cell { min-height: 44px; padding: 5px 4px; }
+    .cal-cell-pills { display: none; }
+    .cal-cell-dots { display: flex; }
+  }
 
   .task-card { display: flex; align-items: center; padding: 13px 15px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; gap: 12px; box-shadow: 0 1px 2px rgba(var(--shadow-rgb),0.05); transition: background-color .2s ease, border-color .2s ease; }
   .task-card.focus-overdue { border-left: 4px solid var(--negative); background: var(--negative-tint); }
@@ -1520,9 +1527,14 @@ function renderCalGrid(byDate,todayStr){
       return `<div class="cal-pill" style="background:${s.bg};color:${s.fg}" title="${escAttr(t.desc)}">${t.desc}</div>`;
     }).join('');
     if(rest>0) pillsHtml+=`<div class="cal-pill cal-pill-more">+${rest} more</div>`;
+    const shownDots=tasks.slice(0,6);
+    const restDots=tasks.length-shownDots.length;
+    let dotsHtml=shownDots.map(t=>`<span class="cal-dot" style="background:${taskPillStyle(t,todayStr).bg}"></span>`).join('');
+    if(restDots>0) dotsHtml+=`<span class="cal-dot-more">+${restDots}</span>`;
     html+=`<div class="cal-cell${isToday?' cal-cell-today':''}${isSelected?' cal-cell-selected':''}" onclick="calSelectDay('${dateStr}')">
       <div class="cal-cell-num">${d}</div>
       <div class="cal-cell-pills">${pillsHtml}</div>
+      <div class="cal-cell-dots">${dotsHtml}</div>
     </div>`;
   });
   html+='</div>';
