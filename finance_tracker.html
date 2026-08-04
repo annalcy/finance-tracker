@@ -304,6 +304,33 @@
       <div class="section-title" style="margin-bottom:8px">This week</div>
       <div id="week-body" style="font-size:13px;color:var(--ink);line-height:1.6"></div>
     </div>
+    <div class="form-card" id="income-pred-card" style="margin-bottom:1.5rem;display:none">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+        <div class="section-title" style="margin-bottom:0">Predicted income</div>
+        <div id="income-pred-month-label" style="font-size:12px;color:var(--text-secondary)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:12px">
+        <div>
+          <div class="metric-label" style="margin-bottom:4px">Safe to spend</div>
+          <div id="income-pred-safe" class="metric-value" style="font-size:30px">$0</div>
+        </div>
+        <div id="income-pred-pace-badge" style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:9999px"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:12px">
+        <div class="metric" style="flex:1;padding:0.75rem">
+          <div class="metric-label">Raw total</div>
+          <div id="income-pred-raw" class="metric-value" style="font-size:18px">$0</div>
+        </div>
+        <div class="metric" style="flex:1;padding:0.75rem">
+          <div class="metric-label">Risk-adjusted</div>
+          <div id="income-pred-adjusted" class="metric-value" style="font-size:18px;color:var(--accent)">$0</div>
+        </div>
+      </div>
+      <div id="income-pred-breakdown" style="display:flex;flex-direction:column;gap:6px;margin-bottom:6px"></div>
+      <div id="income-pred-note" style="font-size:12px;color:var(--text-secondary);margin-top:4px"></div>
+      <div id="income-pred-entries" style="display:flex;flex-direction:column;gap:6px;margin-top:12px"></div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:10px">Add, edit, or mark entries paid via the Telegram bot (/addincome, /updateincome).</div>
+    </div>
     <div class="section-title">All entries this month</div>
     <div class="entries-list" id="recent-entries"></div>
   </div>
@@ -630,6 +657,7 @@ const API = 'https://finance-tracker-anna-li.vercel.app/api/entries';
 const INVESTMENTS_API = 'https://finance-tracker-anna-li.vercel.app/api/investments';
 const PRICES_API = 'https://finance-tracker-anna-li.vercel.app/api/prices';
 const GOAL_API = 'https://finance-tracker-anna-li.vercel.app/api/goal';
+const INCOME_PRED_API = 'https://finance-tracker-anna-li.vercel.app/api/income-predictions';
 const INVOICES_API = 'https://finance-tracker-anna-li.vercel.app/api/invoices';
 const TASKS_API = 'https://finance-tracker-anna-li.vercel.app/api/tasks';
 const USD_TO_HKD = 7.8; // HKD is pegged to USD (7.75-7.85 band) — fixed rate is close enough
@@ -700,7 +728,7 @@ let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCateg
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
-let _goal=null, _invoices=[], _tasksAll=[];
+let _goal=null, _invoices=[], _tasksAll=[], _incomePred=null;
 let _editingTaskId=null, _taskEditType='soft';
 let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calSelectedDay=null;
 let _calAddingTask=false, _addTaskType='soft';
@@ -916,9 +944,11 @@ function initApp(){
   loadEntries();
   loadGoal();
   loadInvoices();
+  loadIncomePred();
   setInterval(loadEntries,300000);
   setInterval(loadGoal,300000);
   setInterval(loadInvoices,300000);
+  setInterval(loadIncomePred,300000);
 }
 function fmt(n){return '$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});}
 function today(){return new Date().toISOString().split('T')[0];}
@@ -1108,6 +1138,77 @@ function renderWeekCard(){
   if(overdue.length) body+=`<br>⚠️ ${overdue.length} invoice${overdue.length>1?'s':''} overdue (${fmt(overdue.reduce((s,i)=>s+i.amount,0))})`;
   document.getElementById('week-body').innerHTML=body;
   card.style.display='';
+}
+
+// ── Predicted income ─────────────────────────────────────────────────────────
+const INCOME_STAGE_META={
+  likely:{label:'Likely',color:'var(--warning)'},
+  confirmed:{label:'Confirmed',color:'var(--accent-soft)'},
+  paid:{label:'Paid',color:'var(--accent)'},
+};
+async function loadIncomePred(){
+  try{
+    const res=await fetch(INCOME_PRED_API);
+    _incomePred=res.ok?await res.json():null;
+  }catch(e){
+    _incomePred=null;
+  }
+  renderIncomePredCard();
+}
+function renderIncomePredCard(){
+  const card=document.getElementById('income-pred-card');
+  if(!_incomePred||!_incomePred.entries||!_incomePred.entries.length){ card.style.display='none'; return; }
+  card.style.display='';
+  const d=_incomePred;
+  const [y,m]=d.month.split('-').map(Number);
+  document.getElementById('income-pred-month-label').textContent=`${MONTHS[m-1]} ${y}`;
+
+  const safeEl=document.getElementById('income-pred-safe');
+  safeEl.textContent=fmt(d.safe);
+  safeEl.style.color=d.safe<0?'var(--negative)':'var(--ink)';
+  document.getElementById('income-pred-raw').textContent=fmt(d.raw);
+  document.getElementById('income-pred-adjusted').textContent=fmt(d.adjusted);
+
+  const badge=document.getElementById('income-pred-pace-badge');
+  if(d.pace&&d.pace.isCurrentMonth){
+    badge.style.display='';
+    if(d.pace.overPace){
+      badge.textContent='Over pace';
+      badge.style.background='var(--negative-bg)';
+      badge.style.color='var(--negative-text)';
+    }else{
+      badge.textContent='On pace';
+      badge.style.background='var(--accent-bg)';
+      badge.style.color='var(--accent-text)';
+    }
+  }else{
+    badge.style.display='none';
+  }
+
+  const maxStage=Math.max(1,d.breakdown.likely,d.breakdown.confirmed,d.breakdown.paid);
+  document.getElementById('income-pred-breakdown').innerHTML=['likely','confirmed','paid'].map(stage=>{
+    const meta=INCOME_STAGE_META[stage];
+    const amt=d.breakdown[stage]||0;
+    const pct=Math.round((amt/maxStage)*100);
+    return `<div class="bar-row"><span style="width:70px;flex-shrink:0">${meta.label}</span>
+      <div class="bar-wrap"><div class="bar" style="width:${pct}%;background:${meta.color}"></div></div>
+      <span style="flex-shrink:0">${fmt(amt)}</span></div>`;
+  }).join('');
+
+  document.getElementById('income-pred-note').textContent=
+    `Risk-adjusted total weights each entry by stage; safe-to-spend also holds back savings, fixed bills, and a 15% buffer.`;
+
+  const entries=[...d.entries].sort((a,b)=>(b.date_added||0)-(a.date_added||0));
+  document.getElementById('income-pred-entries').innerHTML=entries.map(e=>{
+    const meta=INCOME_STAGE_META[e.stage]||{label:e.stage,color:'var(--text-secondary)'};
+    return `<div class="entry-row">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:500">${e.client}${e.job_description?' — '+e.job_description:''}</div>
+        <div style="font-size:11px;color:${meta.color}">${meta.label}</div>
+      </div>
+      <div class="entry-amount">${fmt(e.predicted_amount)}</div>
+    </div>`;
+  }).join('');
 }
 
 // ── Invoices ─────────────────────────────────────────────────────────────────
