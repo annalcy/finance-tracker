@@ -1053,6 +1053,7 @@ function renderOverview(){
   renderBudget(exp);
   renderGoalCard();
   renderWeekCard();
+  loadIncomePred();
 }
 
 function renderBudget(exp){
@@ -1147,8 +1148,9 @@ const INCOME_STAGE_META={
   paid:{label:'Paid',color:'var(--accent)'},
 };
 async function loadIncomePred(){
+  const month=`${selYear}-${String(selMonth+1).padStart(2,'0')}`;
   try{
-    const res=await fetch(INCOME_PRED_API);
+    const res=await fetch(`${INCOME_PRED_API}?month=${month}`);
     _incomePred=res.ok?await res.json():null;
   }catch(e){
     _incomePred=null;
