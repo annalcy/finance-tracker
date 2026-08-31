@@ -5,6 +5,8 @@ const {
   EXPENSE_CAT_BTNS, INCOME_CAT_BTNS,
 } = require('../lib/constants');
 const { computeGoalProgress, currentYearMonth, newlyCrossedMilestone } = require('../lib/goalCalc');
+const { addDaysToDateStr } = require('../lib/time');
+const caldav = require('../lib/caldav');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -170,6 +172,24 @@ function parseDueDate(text) {
   }
 
   return parseRelativeDate(text) || false;
+}
+
+// "2pm", "3:30pm", "14:30", "all day" → "HH:MM" (24h) or null for all-day.
+// Returns false when it couldn't parse, so callers can ask again.
+function parseEventTime(text) {
+  const t = text.trim().toLowerCase();
+  if (t === 'all day' || t === 'allday' || t === 'all-day') return null;
+  let m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) return `${m[1].padStart(2, '0')}:${m[2]}`;
+  m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+  if (m) {
+    let h = parseInt(m[1]);
+    const min = m[2] || '00';
+    if (m[3] === 'pm' && h !== 12) h += 12;
+    if (m[3] === 'am' && h === 12) h = 0;
+    return `${String(h).padStart(2, '0')}:${min}`;
+  }
+  return false;
 }
 
 // ── Firestore-backed session (survives serverless cold starts) ─────────────────
@@ -397,6 +417,28 @@ bot.command('addinvoice', async ctx => {
   await ctx.reply('Which client is this invoice for?');
 });
 
+bot.command('addevent', async ctx => {
+  await setSession(ctx.from.id, { flow: 'event', stage: 'event_title', event: {} });
+  await ctx.reply("What's the event?");
+});
+
+// Diagnostic — iCloud's CalDAV listing doesn't flag a "primary" calendar, so
+// this is how you find the exact display name to put in ICLOUD_CALENDAR_NAME.
+bot.command('calendars', async ctx => {
+  try {
+    const calendars = await caldav.listCalendars();
+    if (!calendars.length) return ctx.reply('No calendars found.');
+    const lines = calendars.map(c => `• *${c.displayName}*`);
+    await ctx.reply(
+      `Your iCloud calendars:\n\n${lines.join('\n')}\n\nSet ICLOUD_CALENDAR_NAME (in Vercel env vars) to the one you want synced.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (e) {
+    console.error('calendars command error:', e);
+    await ctx.reply(`Couldn't reach iCloud: ${e.message}`);
+  }
+});
+
 // ── Main text handler ──────────────────────────────────────────────────────────
 bot.on('text', async ctx => {
   const text = ctx.message.text.trim();
@@ -404,6 +446,65 @@ bot.on('text', async ctx => {
 
   const userId = ctx.from.id;
   const state = await getSession(userId);
+
+  if (state && state.flow === 'event') {
+    if (state.stage === 'event_title') {
+      state.event.title = text.trim();
+      state.stage = 'event_date';
+      await setSession(userId, state);
+      await ctx.reply('What date? e.g. "today", "tomorrow", "Jul 30", or "30/7"');
+      return;
+    }
+    if (state.stage === 'event_date') {
+      const lower = text.trim().toLowerCase();
+      let date;
+      if (lower === 'tomorrow') {
+        const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + 1);
+        date = d.toISOString().split('T')[0];
+      } else {
+        date = parseRelativeDate(text.trim());
+      }
+      if (!date) {
+        await ctx.reply('Didn\'t get that — try "today", "tomorrow", "Jul 30", or "30/7".');
+        return;
+      }
+      state.event.date = date;
+      state.stage = 'event_time';
+      await setSession(userId, state);
+      await ctx.reply('What time? e.g. "2pm", "14:30", or "all day"');
+      return;
+    }
+    if (state.stage === 'event_time') {
+      const time = parseEventTime(text);
+      if (time === false) {
+        await ctx.reply('Didn\'t get that — try "2pm", "14:30", or "all day".');
+        return;
+      }
+      const allDay = time === null;
+      let start, end;
+      if (allDay) {
+        // RFC 5545 all-day DTEND is exclusive — a single-day event needs
+        // end = start + 1 day, or some clients render it as zero-length.
+        start = state.event.date;
+        end = addDaysToDateStr(state.event.date, 1);
+      } else {
+        const startDate = new Date(`${state.event.date}T${time}:00+08:00`);
+        start = startDate.toISOString();
+        end = new Date(startDate.getTime() + 60 * 60000).toISOString();
+      }
+      const title = state.event.title;
+      const whenLabel = allDay ? state.event.date : `${state.event.date} ${time}`;
+      await clearSession(userId);
+      try {
+        await caldav.createEvent({ summary: title, start, end, allDay });
+        await ctx.reply(`✅ Added to your calendar: *${title}* — ${whenLabel}`, { parse_mode: 'Markdown' });
+      } catch (e) {
+        console.error('addevent create error:', e);
+        await ctx.reply(`Couldn't add that to iCloud: ${e.message}`);
+      }
+      return;
+    }
+  }
 
   if (state && state.flow === 'invoice') {
     if (state.stage === 'invoice_client') {

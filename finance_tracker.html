@@ -383,6 +383,7 @@
       <span class="pill" data-filter="done" onclick="setCalFilter('done')">Done</span>
       <span class="pill" data-filter="overdue" onclick="setCalFilter('overdue')">Overdue</span>
       <span class="pill" data-filter="postponed" onclick="setCalFilter('postponed')">Postponed</span>
+      <span class="pill active" id="cal-icloud-toggle" onclick="toggleShowIcloud()">📅 iCloud</span>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
@@ -402,6 +403,7 @@
       <span><span class="legend-sq" style="background:var(--warning)"></span>Due</span>
       <span><span class="legend-sq" style="background:var(--accent)"></span>Completed</span>
       <span><span class="legend-sq" style="background:var(--text-muted)"></span>Postponed</span>
+      <span><span class="legend-sq" style="background:var(--border-strong)"></span>iCloud event</span>
     </div>
     <div id="cal-day-detail" class="form-card" style="display:none;margin-top:1rem"></div>
   </div>
@@ -660,6 +662,7 @@ const GOAL_API = 'https://finance-tracker-anna-li.vercel.app/api/goal';
 const INCOME_PRED_API = 'https://finance-tracker-anna-li.vercel.app/api/income-predictions';
 const INVOICES_API = 'https://finance-tracker-anna-li.vercel.app/api/invoices';
 const TASKS_API = 'https://finance-tracker-anna-li.vercel.app/api/tasks';
+const CALENDAR_API = 'https://finance-tracker-anna-li.vercel.app/api/calendar';
 const USD_TO_HKD = 7.8; // HKD is pegged to USD (7.75-7.85 band) — fixed rate is close enough
 
 const INCOME_CATS = ['Shooting','Video editing','Graphic design','Writing/Caption','Freelance day rate','Project fee','Retainer','Sales/Resale','Event','Laisee','Other income'];
@@ -732,6 +735,7 @@ let _goal=null, _invoices=[], _tasksAll=[], _incomePred=null;
 let _editingTaskId=null, _taskEditType='soft';
 let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calSelectedDay=null;
 let _calAddingTask=false, _addTaskType='soft';
+let _icalEvents=[], _showIcloud=true;
 let _pendingPaymentPromptId=null;
 let _todaySort='deadline', _todayDoneCollapsedManual=null, _todayAddingTask=false;
 let _insightsMonth=_todayParts[0]+'-'+String(_todayParts[1]).padStart(2,'0');
@@ -1283,8 +1287,44 @@ async function loadTasksForToday(){
   await loadTasksAll();
   renderToday();
 }
+// Normalizes iCloud CalDAV events into task-shaped objects so the existing
+// calendar rendering (taskDisplayDate/taskPillStyle/taskCardHTML) can treat
+// them uniformly — tagged with _source so those functions can branch on it.
+function icalEventToPseudoTask(e){
+  const startLocal=new Date(e.start).toLocaleString('en-CA',{timeZone:'Asia/Hong_Kong',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+  const [datePart,timePart]=startLocal.split(', ');
+  return {
+    id:'ical-'+e.uid, _source:'icloud', desc:e.summary||'(untitled event)',
+    deadlineDate:e.allDay?e.start.slice(0,10):datePart, time:e.allDay?null:timePart,
+    allDay:!!e.allDay, url:e.url, etag:e.etag, status:'icloud',
+  };
+}
+async function loadIcloudEventsForCalendar(){
+  if(!_showIcloud){ _icalEvents=[]; return; }
+  try{
+    const start=new Date(Date.UTC(_calYear,_calMonth-1,1)).toISOString();
+    const end=new Date(Date.UTC(_calYear,_calMonth+2,0)).toISOString();
+    const res=await fetch(`${CALENDAR_API}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+    const events=await res.json();
+    _icalEvents=Array.isArray(events)?events.map(icalEventToPseudoTask):[];
+  }catch(e){
+    _icalEvents=[];
+  }
+}
+function toggleShowIcloud(){
+  _showIcloud=!_showIcloud;
+  document.getElementById('cal-icloud-toggle').classList.toggle('active',_showIcloud);
+  loadIcloudEventsForCalendar().then(renderCalendar);
+}
+async function deleteIcloudEvent(url,etag){
+  try{
+    await fetch(CALENDAR_API,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,etag})});
+  }catch(e){ console.error('delete icloud event failed',e); }
+  _icalEvents=_icalEvents.filter(t=>t.url!==url);
+  renderCalendar();
+}
 async function loadTasksForCalendar(){
-  await loadTasksAll();
+  await Promise.all([loadTasksAll(), loadIcloudEventsForCalendar()]);
   renderCalendar();
 }
 async function loadTasksForInsights(){
@@ -1312,8 +1352,19 @@ function pendingPaymentPromptHTML(t){
   </div>`;
 }
 
+function icalEventCardHTML(t){
+  const timeLabel=t.allDay?'all day':(t.time||'');
+  return `<div class="task-card">
+    <div style="flex:1;min-width:0">
+      <div class="task-desc">📅 ${t.desc}</div>
+      <div class="task-meta"><span class="task-badge" style="background:var(--surface-hover);color:var(--text-secondary)">ICLOUD</span>${timeLabel?' &middot; '+timeLabel:''}</div>
+    </div>
+    <button class="entry-edit" onclick="deleteIcloudEvent('${t.url.replace(/'/g,"\\'")}','${(t.etag||'').replace(/'/g,"\\'")}')" title="Delete from iCloud">🗑</button>
+  </div>`;
+}
 function taskCardHTML(t,opts){
   opts=opts||{};
+  if(t._source==='icloud') return icalEventCardHTML(t);
   if(String(t.id)===String(_editingTaskId)) return taskEditFormHTML(t);
   if(String(t.id)===String(_pendingPaymentPromptId)) return pendingPaymentPromptHTML(t);
   const badge=t.deadlineType==='hard'
@@ -1472,6 +1523,7 @@ function taskDisplayDate(t){
   return t.deadlineDate||null;
 }
 function taskPillStyle(t,todayStr){
+  if(t._source==='icloud') return {bg:'var(--border-strong)',fg:'var(--ink)',label:'icloud'};
   if(t.status==='done') return {bg:'var(--accent)',fg:'#FFFFFF',label:'done'};
   const dd=t.deadlineDate;
   if(dd && dd<todayStr) return {bg:'var(--negative)',fg:'#FFFFFF',label:'overdue'};
@@ -1507,7 +1559,7 @@ function calNavMonth(delta){
   else if(_calMonth>11){_calMonth=0;_calYear++;}
   _calSelectedDay=null;
   _calAddingTask=false;
-  renderCalendar();
+  loadIcloudEventsForCalendar().then(renderCalendar);
 }
 function calSelectDay(dateStr){
   _calSelectedDay=_calSelectedDay===dateStr?null:dateStr;
@@ -1601,6 +1653,9 @@ function renderCalendar(){
     if(!taskMatchesCalFilter(t,todayStr)) return;
     (byDate[d]=byDate[d]||[]).push(t);
   });
+  if(_showIcloud) _icalEvents.forEach(t=>{
+    (byDate[t.deadlineDate]=byDate[t.deadlineDate]||[]).push(t);
+  });
   if(_calView==='grid') renderCalGrid(byDate,todayStr);
   else renderCalAgenda(byDate,todayStr);
   renderCalDayDetail(byDate,todayStr);
@@ -1627,7 +1682,8 @@ function renderCalGrid(byDate,todayStr){
     const rest=tasks.length-shown.length;
     let pillsHtml=shown.map(t=>{
       const s=taskPillStyle(t,todayStr);
-      return `<div class="cal-pill" style="background:${s.bg};color:${s.fg}" title="${escAttr(t.desc)}">${t.desc}</div>`;
+      const label=t._source==='icloud'?`📅 ${t.desc}`:t.desc;
+      return `<div class="cal-pill" style="background:${s.bg};color:${s.fg}" title="${escAttr(t.desc)}">${label}</div>`;
     }).join('');
     if(rest>0) pillsHtml+=`<div class="cal-pill cal-pill-more">+${rest} more</div>`;
     const shownDots=tasks.slice(0,6);
