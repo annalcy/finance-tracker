@@ -385,6 +385,7 @@
       <span class="pill" data-filter="postponed" onclick="setCalFilter('postponed')">Postponed</span>
       <span class="pill active" id="cal-icloud-toggle" onclick="toggleShowIcloud()">📅 iCloud</span>
     </div>
+    <div id="cal-icloud-error" style="display:none;font-size:12px;color:var(--negative-text);background:var(--negative-bg);border:1px solid var(--negative-soft);border-radius:8px;padding:8px 12px;margin-bottom:1rem"></div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <button class="btn" onclick="calNavMonth(-1)">‹</button>
@@ -735,7 +736,7 @@ let _goal=null, _invoices=[], _tasksAll=[], _incomePred=null;
 let _editingTaskId=null, _taskEditType='soft';
 let _calYear=_todayParts[0], _calMonth=_todayParts[1]-1, _calView='grid', _calFilter='all', _calSelectedDay=null;
 let _calAddingTask=false, _addTaskType='soft';
-let _icalEvents=[], _showIcloud=true;
+let _icalEvents=[], _showIcloud=true, _icloudError=null;
 let _pendingPaymentPromptId=null;
 let _todaySort='deadline', _todayDoneCollapsedManual=null, _todayAddingTask=false;
 let _insightsMonth=_todayParts[0]+'-'+String(_todayParts[1]).padStart(2,'0');
@@ -1300,15 +1301,22 @@ function icalEventToPseudoTask(e){
   };
 }
 async function loadIcloudEventsForCalendar(){
-  if(!_showIcloud){ _icalEvents=[]; return; }
+  if(!_showIcloud){ _icalEvents=[]; _icloudError=null; return; }
   try{
     const start=new Date(Date.UTC(_calYear,_calMonth-1,1)).toISOString();
     const end=new Date(Date.UTC(_calYear,_calMonth+2,0)).toISOString();
     const res=await fetch(`${CALENDAR_API}?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     const events=await res.json();
+    if(!res.ok || events.error){
+      _icalEvents=[];
+      _icloudError=events.error||`iCloud request failed (${res.status})`;
+      return;
+    }
     _icalEvents=Array.isArray(events)?events.map(icalEventToPseudoTask):[];
+    _icloudError=null;
   }catch(e){
     _icalEvents=[];
+    _icloudError='Could not reach the calendar API — check your connection.';
   }
 }
 function toggleShowIcloud(){
@@ -1646,6 +1654,9 @@ const WEEKDAY_NAMES=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'
 function renderCalendar(){
   const todayStr=today();
   document.getElementById('cal-month-label').textContent=`${MONTH_NAMES[_calMonth]} ${_calYear}`;
+  const errEl=document.getElementById('cal-icloud-error');
+  if(_showIcloud && _icloudError){ errEl.style.display='block'; errEl.textContent=`⚠️ iCloud: ${_icloudError}`; }
+  else errEl.style.display='none';
   const byDate={};
   _tasksAll.forEach(t=>{
     const d=taskDisplayDate(t);
