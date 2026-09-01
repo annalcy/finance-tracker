@@ -428,9 +428,11 @@ bot.command('calendars', async ctx => {
   try {
     const calendars = await caldav.listCalendars();
     if (!calendars.length) return ctx.reply('No calendars found.');
-    const lines = calendars.map(c => `• *${c.displayName}*`);
+    const lines = calendars.map(c => `• *${c.displayName}*${c.components.includes('VEVENT') ? '' : ' (reminders only)'}`);
     await ctx.reply(
-      `Your iCloud calendars:\n\n${lines.join('\n')}\n\nSet ICLOUD_CALENDAR_NAME (in Vercel env vars) to the one you want synced.`,
+      `Your iCloud calendars:\n\n${lines.join('\n')}\n\n` +
+      `Reading pulls from all of them. New events (tasks, /addevent) go to "Home" by ` +
+      `default — set ICLOUD_CALENDAR_NAME (in Vercel env vars) to change where those land.`,
       { parse_mode: 'Markdown' }
     );
   } catch (e) {

@@ -1297,7 +1297,7 @@ function icalEventToPseudoTask(e){
   return {
     id:'ical-'+e.uid, _source:'icloud', desc:e.summary||'(untitled event)',
     deadlineDate:e.allDay?e.start.slice(0,10):datePart, time:e.allDay?null:timePart,
-    allDay:!!e.allDay, url:e.url, etag:e.etag, status:'icloud',
+    allDay:!!e.allDay, url:e.url, etag:e.etag, status:'icloud', calendarName:e.calendarName||'',
   };
 }
 async function loadIcloudEventsForCalendar(){
@@ -1365,7 +1365,7 @@ function icalEventCardHTML(t){
   return `<div class="task-card">
     <div style="flex:1;min-width:0">
       <div class="task-desc">📅 ${t.desc}</div>
-      <div class="task-meta"><span class="task-badge" style="background:var(--surface-hover);color:var(--text-secondary)">ICLOUD</span>${timeLabel?' &middot; '+timeLabel:''}</div>
+      <div class="task-meta"><span class="task-badge" style="background:var(--surface-hover);color:var(--text-secondary)">${escAttr(t.calendarName||'ICLOUD')}</span>${timeLabel?' &middot; '+timeLabel:''}</div>
     </div>
     <button class="entry-edit" onclick="deleteIcloudEvent('${t.url.replace(/'/g,"\\'")}','${(t.etag||'').replace(/'/g,"\\'")}')" title="Delete from iCloud">🗑</button>
   </div>`;
