@@ -1297,7 +1297,7 @@ function icalEventToPseudoTask(e){
   return {
     id:'ical-'+e.uid, _source:'icloud', desc:e.summary||'(untitled event)',
     deadlineDate:e.allDay?e.start.slice(0,10):datePart, time:e.allDay?null:timePart,
-    allDay:!!e.allDay, url:e.url, etag:e.etag, status:'icloud', calendarName:e.calendarName||'',
+    allDay:!!e.allDay, status:'icloud', calendarName:e.calendarName||'',
   };
 }
 async function loadIcloudEventsForCalendar(){
@@ -1323,13 +1323,6 @@ function toggleShowIcloud(){
   _showIcloud=!_showIcloud;
   document.getElementById('cal-icloud-toggle').classList.toggle('active',_showIcloud);
   loadIcloudEventsForCalendar().then(renderCalendar);
-}
-async function deleteIcloudEvent(url,etag){
-  try{
-    await fetch(CALENDAR_API,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,etag})});
-  }catch(e){ console.error('delete icloud event failed',e); }
-  _icalEvents=_icalEvents.filter(t=>t.url!==url);
-  renderCalendar();
 }
 async function loadTasksForCalendar(){
   await Promise.all([loadTasksAll(), loadIcloudEventsForCalendar()]);
@@ -1360,6 +1353,8 @@ function pendingPaymentPromptHTML(t){
   </div>`;
 }
 
+// Read-only display — Personal OS shows Anna's real iCloud events but never
+// edits/deletes them, so there's no action button here, unlike task cards.
 function icalEventCardHTML(t){
   const timeLabel=t.allDay?'all day':(t.time||'');
   return `<div class="task-card">
@@ -1367,7 +1362,6 @@ function icalEventCardHTML(t){
       <div class="task-desc">📅 ${t.desc}</div>
       <div class="task-meta"><span class="task-badge" style="background:var(--surface-hover);color:var(--text-secondary)">${escAttr(t.calendarName||'ICLOUD')}</span>${timeLabel?' &middot; '+timeLabel:''}</div>
     </div>
-    <button class="entry-edit" onclick="deleteIcloudEvent('${t.url.replace(/'/g,"\\'")}','${(t.etag||'').replace(/'/g,"\\'")}')" title="Delete from iCloud">🗑</button>
   </div>`;
 }
 function taskCardHTML(t,opts){
