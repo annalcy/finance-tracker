@@ -222,16 +222,323 @@
   .accent-swatch-row { display: flex; gap: 10px; }
   .accent-swatch { width: 30px; height: 30px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(var(--shadow-rgb),0.08); position: relative; }
   .accent-swatch.active::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--ink); }
+
+  /* ===== Personal OS dashboard shell (rail · main · agenda) ================= */
+  .shell {
+    display: grid;
+    grid-template-columns: 72px minmax(0,1fr) 340px;
+    align-content: start;
+    min-height: 100vh;
+    max-width: 1500px;
+    margin: 0 auto;
+  }
+  .rail {
+    grid-row: 1 / span 2;
+    position: sticky; top: 0; align-self: start; height: 100vh;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 16px 0; background: var(--surface); border-right: 1px solid var(--border);
+    z-index: 20;
+  }
+  .rail-mark {
+    width: 38px; height: 38px; border-radius: 11px; margin-bottom: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Fraunces', Georgia, serif; font-weight: 700; font-size: 17px; color: #fff;
+    background: linear-gradient(150deg, var(--accent-soft), var(--accent));
+    box-shadow: 0 2px 8px -2px rgba(var(--shadow-rgb),0.28);
+  }
+  .rail-btn {
+    position: relative; width: 42px; height: 42px; border-radius: 12px; border: none;
+    background: transparent; cursor: pointer; font-size: 18px; color: var(--text-secondary);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+  }
+  .rail-btn:hover { background: var(--surface-hover); color: var(--ink); }
+  .rail-btn.active { background: var(--accent-bg); color: var(--accent-text); }
+  .rail-btn.active::before {
+    content: ''; position: absolute; left: -16px; top: 10px; bottom: 10px; width: 3px;
+    border-radius: 0 3px 3px 0; background: var(--accent);
+  }
+  .rail-sep { width: 22px; height: 1px; background: var(--border); margin: 6px 0; }
+  .rail-spacer { flex: 1; }
+
+  .topbar {
+    grid-column: 2 / span 2;
+    position: relative;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 15px 26px; border-bottom: 1px solid var(--border); background: var(--bg);
+  }
+  .topbar .brand-heading {
+    font-family: 'Fraunces', Georgia, serif; font-size: 19px; font-weight: 600;
+    letter-spacing: -0.01em; display: flex; align-items: center; gap: 9px;
+    white-space: nowrap; margin-bottom: 0;
+  }
+  .brand-sub { font-size: 12px; color: var(--text-secondary); margin: 2px 0 0; letter-spacing: 0.01em; }
+  .topbar-nav { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .topbar .tabs { border-bottom: none; margin-bottom: 0; }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .monogram {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--ink); color: var(--on-ink);
+    display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; flex-shrink: 0;
+  }
+
+  .app.main {
+    grid-column: 2; min-width: 0;
+    max-width: none; margin: 0; padding: 24px 26px 48px;
+  }
+
+  .agenda {
+    grid-column: 3;
+    border-left: 1px solid var(--border); padding: 22px 20px;
+    position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto;
+  }
+  .agenda-date { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; }
+  .agenda-sub { font-size: 12px; color: var(--text-secondary); margin: 2px 0 16px; }
+  .agenda-day-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-secondary); margin: 16px 0 8px;
+  }
+  .agenda-day-label:first-child { margin-top: 0; }
+  .evt {
+    margin: 6px 0; padding: 9px 11px; border-radius: 9px; font-size: 12px;
+    border-left: 3px solid var(--accent); background: var(--accent-bg); color: var(--accent-text);
+  }
+  .evt .e-title { font-weight: 600; line-height: 1.35; }
+  .evt .e-time { opacity: 0.82; font-size: 11px; margin-top: 1px; }
+  .evt.warn { border-left-color: var(--warning); background: var(--warning-bg); color: var(--warning-text); }
+  .evt.neg  { border-left-color: var(--negative); background: var(--negative-bg); color: var(--negative-text); }
+  .evt.muted { border-left-color: var(--border-strong); background: var(--surface-hover); color: var(--text-secondary); }
+  .agenda-foot { font-size: 11px; color: var(--text-muted); margin-top: 18px; line-height: 1.5; }
+  .agenda-empty { font-size: 13px; color: var(--text-secondary); padding: 14px 0; }
+
+  /* ---- dashboard hero row (CTA + textured gradient stat cards) ------------- */
+  .row-label {
+    font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase;
+    letter-spacing: 0.06em; margin: 26px 0 12px;
+  }
+  .row-label:first-child { margin-top: 0; }
+  .os-hero { display: grid; gap: 14px; margin-bottom: 22px; }
+  .os-hero.four  { grid-template-columns: 1.1fr 1fr 1fr 1fr; }
+  .os-hero.split { grid-template-columns: 1fr 3fr; }
+  @media (max-width: 1000px) { .os-hero.four, .os-hero.split { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 560px)  { .os-hero.four, .os-hero.split { grid-template-columns: 1fr; } }
+
+  .hero-add {
+    display: flex; flex-direction: column; justify-content: space-between; gap: 14px;
+    min-height: 128px; padding: 18px; text-align: left; cursor: pointer;
+    background: var(--surface); border: 1px dashed var(--border-strong); border-radius: 16px;
+    color: var(--ink); transition: border-color .15s, background .15s;
+    font: inherit;
+  }
+  .hero-add:hover { border-color: var(--accent); background: var(--accent-tint); }
+  .hero-add-title { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .hero-add-sub { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .hero-add-plus {
+    width: 40px; height: 40px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
+  }
+
+  .os-grad {
+    position: relative; overflow: hidden; border: none; border-radius: 16px; padding: 16px 18px;
+    min-height: 128px; display: flex; flex-direction: column; justify-content: space-between;
+    color: #FBF8F3; box-shadow: 0 8px 22px -12px rgba(var(--shadow-rgb),0.42);
+  }
+  .os-grad::after {
+    content: ''; position: absolute; inset: 0; mix-blend-mode: overlay; opacity: 0.5; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  }
+  .os-grad > * { position: relative; z-index: 1; }
+  .g-green  { background: linear-gradient(150deg, #3BAE86, #15795B); }
+  .g-terra  { background: linear-gradient(150deg, #D9743F, #A2481F); }
+  .g-indigo { background: linear-gradient(150deg, #4A6DB0, #2B4680); }
+  .g-gold   { background: linear-gradient(150deg, #D9A73F, #A67B1E); }
+  .g-slate  { background: linear-gradient(150deg, #6B6E77, #43454C); }
+  .hs-k { font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.82; }
+  .hs-v { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 500; font-size: 27px; margin-top: 2px; }
+  .hs-f { font-size: 11px; opacity: 0.82; margin-top: 8px; }
+  .hs-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.22); overflow: hidden; margin-top: 10px; }
+  .hs-bar > i { display: block; height: 100%; border-radius: 3px; background: rgba(255,255,255,0.9); }
+
+  /* overview KPI metrics render straight into .os-hero.split as gradient cards */
+  #page-overview #metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; }
+  #page-overview #metrics .metric {
+    border: none; border-radius: 16px; padding: 16px 18px; position: relative; overflow: hidden;
+    min-height: 128px; display: flex; flex-direction: column; justify-content: space-between;
+    color: #FBF8F3; box-shadow: 0 8px 22px -12px rgba(var(--shadow-rgb),0.42);
+  }
+  #page-overview #metrics .metric::after {
+    content: ''; position: absolute; inset: 0; mix-blend-mode: overlay; opacity: 0.5; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+  }
+  #page-overview #metrics .metric > * { position: relative; z-index: 1; }
+  #page-overview #metrics .metric:nth-child(1) { background: linear-gradient(150deg, #3BAE86, #15795B); }
+  #page-overview #metrics .metric:nth-child(2) { background: linear-gradient(150deg, #D9743F, #A2481F); }
+  #page-overview #metrics .metric:nth-child(3) { background: linear-gradient(150deg, #4A6DB0, #2B4680); }
+  #page-overview #metrics .metric-label { color: rgba(255,255,255,0.82) !important; }
+  #page-overview #metrics .metric-value { color: #FBF8F3 !important; font-size: 26px; }
+
+  /* ---- content cards (wrap the page lists so bodies read like the mockup) -- */
+  .os-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(var(--shadow-rgb),0.05); margin-bottom: 22px; overflow: hidden;
+  }
+  .os-card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .os-card-title { font-family: 'Fraunces', Georgia, serif; font-size: 16px; font-weight: 600; }
+  .os-card-body { padding: 16px 18px; }
+  .os-card-body > .section-title:first-child,
+  .os-card-body > .task-group-header:first-child { margin-top: 0; }
+  .os-card-body .task-card, .os-card-body .entry-row { box-shadow: none; }
+
+  /* appearance popover now anchors off the rail's bottom button */
+  .settings-popover { position: fixed; left: 74px; bottom: 14px; top: auto; right: auto; z-index: 200; }
+
+  @media (max-width: 1180px) {
+    .shell { grid-template-columns: 72px minmax(0,1fr); }
+    .topbar { grid-column: 2; }
+    .agenda {
+      grid-column: 2; border-left: none; border-top: 1px solid var(--border);
+      position: static; max-height: none; overflow: visible;
+    }
+  }
+  @media (max-width: 720px) {
+    .shell { grid-template-columns: 1fr; }
+    .rail {
+      grid-row: auto; grid-column: 1; flex-direction: row; height: auto;
+      position: static; border-right: none; border-bottom: 1px solid var(--border);
+      padding: 8px 12px; overflow-x: auto;
+    }
+    .rail-mark { margin: 0 6px 0 0; }
+    .rail-btn.active::before { display: none; }
+    .rail-sep { width: 1px; height: 22px; margin: 0 4px; }
+    .rail-spacer { display: none; }
+    .topbar, .app.main, .agenda { grid-column: 1; }
+    .app.main { padding: 18px 16px 40px; }
+    .settings-popover { left: 12px; right: 12px; bottom: 12px; width: auto; }
+  }
+
+  /* ================================================================= *
+   *  v2 surface language — deliberately unlike the original doc look  *
+   * ================================================================= */
+  .app.main { padding: 30px 34px 60px; }
+
+  /* every card: borderless, soft shadow, big radius */
+  .os-card, .form-card {
+    border: none !important; border-radius: 20px;
+    box-shadow: 0 8px 26px -12px rgba(var(--shadow-rgb),0.16), 0 1px 3px rgba(var(--shadow-rgb),0.05);
+  }
+  .os-card-head { padding: 18px 22px; }
+  .os-card-body { padding: 6px 22px 14px; }
+  .metric {
+    border: none; border-radius: 16px;
+    box-shadow: 0 6px 20px -12px rgba(var(--shadow-rgb),0.16), 0 1px 2px rgba(var(--shadow-rgb),0.05);
+  }
+  .btn { border-radius: 10px; }
+  .form-group input, .form-group select, .filter-bar select, .filter-bar input { border-radius: 10px; }
+
+  /* the loud Firebase banner -> a quiet status line */
+  .data-note {
+    background: transparent; border: none; padding: 0 2px; margin-bottom: 20px;
+    font-size: 11.5px; color: var(--text-muted);
+  }
+  .data-note::before { content: '\25CF\00a0'; color: var(--accent); }
+
+  /* section labels inside cards: whisper, don't shout */
+  .os-card-body .section-title {
+    font-size: 10.5px; letter-spacing: 0.08em; color: var(--text-muted);
+    margin: 18px 0 2px; font-weight: 700;
+  }
+
+  /* ---- data-table rows (entryHTML output) ------------------------------- */
+  .tbl-head, .tbl-row {
+    display: grid; align-items: center; gap: 14px;
+    grid-template-columns: minmax(0,1fr) 150px 92px 104px 50px;
+  }
+  .tbl-head {
+    padding: 9px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid var(--border);
+  }
+  .tbl-head .thr { text-align: right; }
+  .tbl-row { padding: 13px 6px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .tbl-row:last-child { border-bottom: none; }
+  .tbl-row:hover { background: var(--surface-hover); }
+  .tbl-row .r-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .tbl-row .r-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .tbl-row .r-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tbl-row .r-client { font-size: 12px; color: var(--text-muted); flex-shrink: 0; white-space: nowrap; }
+  .tbl-row .chip { font-size: 11px; padding: 3px 10px; border-radius: 999px; white-space: nowrap; justify-self: start; }
+  .tbl-row .r-date { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
+  .tbl-row .r-amt {
+    font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 500;
+    font-size: 15px; text-align: right; white-space: nowrap;
+  }
+  .tbl-row .r-act { display: flex; gap: 2px; justify-content: flex-end; }
+  .tbl-row .r-act button {
+    background: none; border: none; cursor: pointer; color: var(--text-muted);
+    font-size: 14px; padding: 4px 6px; border-radius: 6px; opacity: 0.5;
+  }
+  .tbl-row .r-act button:hover { opacity: 1; background: var(--surface-hover); color: var(--ink); }
+  @media (max-width: 780px) {
+    .tbl-head { display: none; }
+    .tbl-row { grid-template-columns: 1fr auto; column-gap: 12px; row-gap: 6px; padding: 14px 6px; }
+    .tbl-row .r-main { grid-column: 1; grid-row: 1; }
+    .tbl-row .r-amt  { grid-column: 2; grid-row: 1; }
+    .tbl-row .r-tag  { grid-column: 1; grid-row: 2; }
+    .tbl-row .r-act  { grid-column: 2; grid-row: 2; }
+    .tbl-row .r-date { display: none; }
+    .tbl-row .chip { justify-self: start; }
+  }
+
+  /* ---- task cards -> flat table-style rows inside their card ----------- */
+  .os-card-body .entries-list { gap: 0; }
+  .os-card-body .task-card {
+    border: none; border-radius: 0; box-shadow: none; background: transparent;
+    padding: 14px 6px; gap: 14px; border-bottom: 1px solid var(--border);
+  }
+  .os-card-body .entries-list > .task-card:last-child { border-bottom: none; }
+  .os-card-body .task-card:hover { background: var(--surface-hover); }
+  .os-card-body .task-card.focus-overdue { border-left: 3px solid var(--negative); padding-left: 11px; background: var(--negative-tint); }
+  .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
+  .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="brand-row" style="position:relative">
+<div class="shell">
+
+  <nav class="rail">
+    <div class="rail-mark">A</div>
+    <button class="rail-btn category-tab active" data-category="productivity" onclick="showCategory('productivity')" title="Productivity" aria-label="Productivity">🔥</button>
+    <button class="rail-btn category-tab" data-category="finance" onclick="showCategory('finance')" title="Finance" aria-label="Finance">💰</button>
+    <span class="rail-sep"></span>
+    <button class="rail-btn" onclick="railJump('calendar')" title="Calendar" aria-label="Jump to calendar">📅</button>
+    <button class="rail-btn" onclick="railJump('reports')" title="Reports" aria-label="Jump to reports">📊</button>
+    <span class="rail-spacer"></span>
+    <button class="rail-btn" id="settings-trigger" onclick="toggleSettings()" aria-label="Appearance settings">◐</button>
+  </nav>
+
+  <header class="topbar">
     <div class="brand-row-text">
       <h2 class="brand-heading"><span class="brand-dot"></span>Anna's Personal OS</h2>
-      <p class="subtitle">Finance & productivity, all in one place</p>
+      <p class="brand-sub" id="brand-sub">Productivity</p>
     </div>
-    <button class="settings-trigger" id="settings-trigger" onclick="toggleSettings()" aria-label="Appearance settings">◐</button>
+    <div class="topbar-nav">
+      <div class="tabs" id="finance-tabs" style="display:none">
+        <button class="tab active" data-page="overview" onclick="showPage('overview')">Overview</button>
+        <button class="tab" data-page="add" onclick="cancelEdit();showPage('add')">Add entry</button>
+        <button class="tab" data-page="records" onclick="showPage('records')">Records</button>
+        <button class="tab" data-page="reports" onclick="showPage('reports')">Reports</button>
+        <button class="tab" data-page="import" onclick="showPage('import')">Import CSV</button>
+      </div>
+      <div class="tabs" id="productivity-tabs">
+        <button class="tab active" data-page="today" onclick="showPage('today')">Today</button>
+        <button class="tab" data-page="calendar" onclick="showPage('calendar')">Calendar</button>
+        <button class="tab" data-page="insights" onclick="showPage('insights')">Insights</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="monogram" title="Anna">A</div>
+    </div>
     <div class="settings-popover" id="settings-popover">
       <div class="settings-label">Appearance</div>
       <div class="theme-toggle-row" id="theme-toggle-row">
@@ -247,39 +554,32 @@
         <button class="accent-swatch" data-accent-opt="plum" style="background:#8E4B7C" onclick="setOsAccent('plum')" aria-label="Plum"></button>
       </div>
     </div>
-  </div>
-  <div class="data-note">Synced live to your Firebase backend — entries, invoices, and tasks logged via Telegram show up here automatically, no manual export needed.</div>
-  <div class="category-tabs">
-    <button class="category-tab" data-category="productivity" onclick="showCategory('productivity')">🔥 Productivity</button>
-    <button class="category-tab active" data-category="finance" onclick="showCategory('finance')">💰 Finance</button>
-  </div>
+  </header>
 
-  <div id="finance-lock" class="lock-card" style="margin:2rem auto;display:none">
-    <h2>🔒 Locked</h2>
-    <p>Enter your passcode to view Finance</p>
-    <input type="password" id="lock-input" inputmode="text" autocomplete="off" placeholder="passcode" />
-    <button class="btn primary" onclick="tryUnlock()">Unlock</button>
-    <div class="lock-error" id="lock-error"></div>
-  </div>
+  <main class="app main">
+    <div class="data-note">Synced live to your Firebase backend — entries, invoices, and tasks logged via Telegram show up here automatically, no manual export needed.</div>
 
-  <div class="tabs" id="finance-tabs">
-    <button class="tab active" data-page="overview" onclick="showPage('overview')">Overview</button>
-    <button class="tab" data-page="add" onclick="cancelEdit();showPage('add')">Add entry</button>
-    <button class="tab" data-page="records" onclick="showPage('records')">Records</button>
-    <button class="tab" data-page="reports" onclick="showPage('reports')">Reports</button>
-    <button class="tab" data-page="import" onclick="showPage('import')">Import CSV</button>
-  </div>
+    <div id="finance-lock" class="lock-card" style="margin:2rem auto;display:none">
+      <h2>🔒 Locked</h2>
+      <p>Enter your passcode to view Finance</p>
+      <input type="password" id="lock-input" inputmode="text" autocomplete="off" placeholder="passcode" />
+      <button class="btn primary" onclick="tryUnlock()">Unlock</button>
+      <div class="lock-error" id="lock-error"></div>
+    </div>
 
-  <div class="tabs" id="productivity-tabs" style="display:none">
-    <button class="tab active" data-page="today" onclick="showPage('today')">Today</button>
-    <button class="tab" data-page="calendar" onclick="showPage('calendar')">Calendar</button>
-    <button class="tab" data-page="insights" onclick="showPage('insights')">Insights</button>
-  </div>
-
-  <div id="page-overview" class="page active">
+  <div id="page-overview" class="page">
     <div class="month-pills" id="overview-year-pills"></div>
     <div class="month-pills" id="overview-month-pills"></div>
-    <div class="metrics" id="metrics"></div>
+    <div class="os-hero split">
+      <button class="hero-add" onclick="cancelEdit();showPage('add')">
+        <div>
+          <div class="hero-add-title">Log an entry</div>
+          <div class="hero-add-sub">Add income or an expense. Anything sent via the Telegram bot lands here on its own.</div>
+        </div>
+        <div class="hero-add-plus">+</div>
+      </button>
+      <div class="metrics" id="metrics"></div>
+    </div>
     <div class="form-card" id="goal-card" style="margin-bottom:1.5rem;display:none">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
         <div class="section-title" style="margin-bottom:0">Income goal</div>
@@ -331,48 +631,61 @@
       <div id="income-pred-entries" style="display:flex;flex-direction:column;gap:6px;margin-top:12px"></div>
       <div style="font-size:11px;color:var(--text-secondary);margin-top:10px">Add, edit, or mark entries paid via the Telegram bot (/addincome, /updateincome).</div>
     </div>
-    <div class="section-title">All entries this month</div>
-    <div class="entries-list" id="recent-entries"></div>
+    <div class="os-card">
+      <div class="os-card-head"><div class="os-card-title">All entries this month</div></div>
+      <div class="os-card-body">
+        <div class="tbl-head"><span>Description</span><span>Category</span><span>Date</span><span class="thr">Amount</span><span></span></div>
+        <div class="entries-list" id="recent-entries"></div>
+      </div>
+    </div>
   </div>
 
-  <div id="page-today" class="page">
-    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-      <div class="summary-msg" id="today-summary-bar" style="margin-bottom:0"></div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div class="month-pills" id="today-sort-toggle" style="margin-bottom:0">
-          <span class="pill active" data-sort="deadline" onclick="setTodaySort('deadline')">By Deadline</span>
-          <span class="pill" data-sort="time" onclick="setTodaySort('time')">By Time Needed</span>
-          <span class="pill" data-sort="priority" onclick="setTodaySort('priority')">By Priority</span>
+  <div id="page-today" class="page active">
+    <div class="row-label" id="today-hero-label">Today</div>
+    <div class="os-hero four" id="today-hero"></div>
+
+    <div class="os-card">
+      <div class="os-card-head">
+        <div class="os-card-title">Task queue</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <div class="month-pills" id="today-sort-toggle" style="margin-bottom:0">
+            <span class="pill active" data-sort="deadline" onclick="setTodaySort('deadline')">By Deadline</span>
+            <span class="pill" data-sort="time" onclick="setTodaySort('time')">By Time Needed</span>
+            <span class="pill" data-sort="priority" onclick="setTodaySort('priority')">By Priority</span>
+          </div>
+          <button class="btn" id="today-add-btn" onclick="toggleTodayAddTask()">+ Add task</button>
         </div>
-        <button class="btn" id="today-add-btn" onclick="toggleTodayAddTask()">+ Add task</button>
       </div>
-    </div>
+      <div class="os-card-body">
+        <div class="summary-msg" id="today-summary-bar" style="margin-bottom:12px"></div>
 
-    <div id="today-add-task-form"></div>
+        <div id="today-add-task-form"></div>
 
-    <div id="today-empty" class="no-entries" style="display:none">No tasks due today.</div>
+        <div id="today-empty" class="no-entries" style="display:none">No tasks due today.</div>
 
-    <div id="today-overdue-section">
-      <div class="section-title" style="margin-top:1rem;color:var(--negative)">Overdue</div>
-      <div class="entries-list" id="today-overdue-list" style="margin-bottom:1.5rem"></div>
-    </div>
+        <div id="today-overdue-section">
+          <div class="section-title" style="margin-top:1rem;color:var(--negative)">Overdue</div>
+          <div class="entries-list" id="today-overdue-list" style="margin-bottom:1.5rem"></div>
+        </div>
 
-    <div id="today-duetoday-section">
-      <div class="section-title" style="color:var(--warning)">Due today</div>
-      <div class="entries-list" id="today-duetoday-list"></div>
-    </div>
+        <div id="today-duetoday-section">
+          <div class="section-title" style="color:var(--warning)">Due today</div>
+          <div class="entries-list" id="today-duetoday-list"></div>
+        </div>
 
-    <div id="today-upcoming-section">
-      <div class="section-title" style="margin-top:1.5rem;color:var(--text-secondary)">Coming up · next 3 days</div>
-      <div class="entries-list" id="today-upcoming-list"></div>
-    </div>
+        <div id="today-upcoming-section">
+          <div class="section-title" style="margin-top:1.5rem;color:var(--text-secondary)">Coming up · next 3 days</div>
+          <div class="entries-list" id="today-upcoming-list"></div>
+        </div>
 
-    <div id="today-done-section">
-      <div class="section-title" style="margin-top:1.5rem;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:6px" onclick="toggleTodayDoneCollapse()">
-        <span id="today-done-header-text">Completed today</span>
-        <span id="today-done-arrow">▼</span>
+        <div id="today-done-section">
+          <div class="section-title" style="margin-top:1.5rem;color:var(--accent);cursor:pointer;display:flex;align-items:center;gap:6px" onclick="toggleTodayDoneCollapse()">
+            <span id="today-done-header-text">Completed today</span>
+            <span id="today-done-arrow">▼</span>
+          </div>
+          <div class="entries-list" id="today-done-list"></div>
+        </div>
       </div>
-      <div class="entries-list" id="today-done-list"></div>
     </div>
   </div>
 
@@ -499,18 +812,26 @@
   </div>
 
   <div id="page-records" class="page">
-    <div class="filter-bar">
-      <select id="f-type" onchange="renderRecords()">
-        <option value="all">All types</option>
-        <option value="income">Income</option>
-        <option value="expense">Expenses</option>
-      </select>
-      <select id="f-cat-filter" onchange="renderRecords()"></select>
-      <select id="f-month-filter" onchange="renderRecords()"></select>
-      <input type="text" id="f-search" placeholder="Search..." oninput="renderRecords()" style="flex:1;min-width:120px;"/>
+    <div class="os-card">
+      <div class="os-card-head">
+        <div class="os-card-title">Records</div>
+        <div class="filter-bar" style="margin-bottom:0">
+          <select id="f-type" onchange="renderRecords()">
+            <option value="all">All types</option>
+            <option value="income">Income</option>
+            <option value="expense">Expenses</option>
+          </select>
+          <select id="f-cat-filter" onchange="renderRecords()"></select>
+          <select id="f-month-filter" onchange="renderRecords()"></select>
+          <input type="text" id="f-search" placeholder="Search..." oninput="renderRecords()" style="flex:1;min-width:120px;"/>
+        </div>
+      </div>
+      <div class="os-card-body">
+        <div id="records-summary" class="summary-msg"></div>
+        <div class="tbl-head"><span>Description</span><span>Category</span><span>Date</span><span class="thr">Amount</span><span></span></div>
+        <div class="entries-list" id="all-entries"></div>
+      </div>
     </div>
-    <div id="records-summary" class="summary-msg"></div>
-    <div class="entries-list" id="all-entries"></div>
   </div>
 
   <div id="page-reports" class="page">
@@ -652,6 +973,15 @@
       </div>
     </div>
   </div>
+  </main>
+
+  <aside class="agenda" id="os-agenda">
+    <div class="agenda-date" id="agenda-date">Today</div>
+    <div class="agenda-sub" id="agenda-sub"></div>
+    <div id="agenda-body"><div class="agenda-empty">Loading…</div></div>
+    <div class="agenda-foot" id="agenda-foot"></div>
+  </aside>
+
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -728,7 +1058,7 @@ function redrawChartsForTheme(){
 })();
 const _todayParts=today().split('-').map(Number);
 let currentType='income', selMonth=_todayParts[1]-1, selYear=_todayParts[0], repYear=_todayParts[0], chartInst=null, chartInst2=null, chartInst3=null;
-let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCategory='finance';
+let _entries=[], _importedUUIDs=new Set(), _currentPage='overview', _activeCategory='productivity';
 let _editingId=null, _expandedCats=new Set();
 let _reportView='alltime';
 let _holdings=[], _prices={};
@@ -950,10 +1280,12 @@ function initApp(){
   loadGoal();
   loadInvoices();
   loadIncomePred();
+  loadAgenda();
   setInterval(loadEntries,300000);
   setInterval(loadGoal,300000);
   setInterval(loadInvoices,300000);
   setInterval(loadIncomePred,300000);
+  setInterval(loadAgenda,300000);
 }
 function fmt(n){return '$'+Math.abs(n).toLocaleString('en-US',{maximumFractionDigits:0});}
 function today(){return new Date().toISOString().split('T')[0];}
@@ -1020,16 +1352,21 @@ function updateEditBanner(){
 
 function entryHTML(e){
   const isIn=e.type==='income';
-  const dc=isIn?'var(--accent)':'var(--negative)',bg=isIn?'var(--accent-bg)':'var(--negative-bg)',tc=isIn?'var(--accent-text)':'var(--negative-text)';
-  return `<div class="entry-row">
-    <div class="entry-dot" style="background:${dc}"></div>
-    <div style="flex:1;min-width:0">
-      <div class="entry-desc">${e.desc}</div>
-      <div class="entry-meta"><span class="entry-cat" style="background:${bg};color:${tc}">${e.cat}</span>${e.client?e.client+' · ':''}${e.date}</div>
+  const bg=isIn?'var(--accent-bg)':'var(--negative-bg)',tc=isIn?'var(--accent-text)':'var(--negative-text)';
+  const dc=isIn?'var(--accent)':'var(--negative)';
+  return `<div class="tbl-row">
+    <div class="r-main">
+      <span class="r-dot" style="background:${dc}"></span>
+      <span class="r-title">${e.desc}</span>
+      ${e.client?`<span class="r-client">${e.client}</span>`:''}
     </div>
-    <div class="entry-amount" style="color:${dc}">${isIn?'+':'-'}${fmt(e.amount)}</div>
-    <button class="entry-edit" onclick="editEntry(${e.id})" title="Edit">✎</button>
-    <button class="entry-del" onclick="deleteEntry(${e.id})" title="Delete">×</button>
+    <div class="r-tag"><span class="chip" style="background:${bg};color:${tc}">${e.cat}</span></div>
+    <div class="r-date">${e.date}</div>
+    <div class="r-amt" style="color:${tc}">${isIn?'+':'−'}${fmt(e.amount)}</div>
+    <div class="r-act">
+      <button onclick="editEntry(${e.id})" title="Edit">&#9998;</button>
+      <button onclick="deleteEntry(${e.id})" title="Delete">&times;</button>
+    </div>
   </div>`;
 }
 
@@ -1287,6 +1624,7 @@ function isTaskPostponed(t){
 async function loadTasksForToday(){
   await loadTasksAll();
   renderToday();
+  renderAgenda();
 }
 // Normalizes iCloud CalDAV events into task-shaped objects so the existing
 // calendar rendering (taskDisplayDate/taskPillStyle/taskCardHTML) can treat
@@ -1327,6 +1665,70 @@ function toggleShowIcloud(){
 async function loadTasksForCalendar(){
   await Promise.all([loadTasksAll(), loadIcloudEventsForCalendar()]);
   renderCalendar();
+  renderAgenda();
+}
+
+// ── Right-hand agenda rail — read-only view of today's tasks + iCloud events ──
+async function loadAgenda(){
+  await Promise.all([loadTasksAll(), loadIcloudEventsForCalendar(), loadInvoices()]);
+  renderAgenda();
+}
+function renderAgenda(){
+  const el=document.getElementById('agenda-body');
+  if(!el) return;
+  const todayStr=today();
+  const d=new Date(todayStr+'T00:00:00');
+  const dateEl=document.getElementById('agenda-date');
+  if(dateEl) dateEl.textContent=`${WEEKDAY_NAMES[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
+
+  const horizon=new Date(d); horizon.setDate(horizon.getDate()+2);
+  const horizonStr=horizon.toISOString().split('T')[0];
+  const items=[];
+
+  (_icalEvents||[]).forEach(e=>{
+    if(e.deadlineDate>=todayStr && e.deadlineDate<=horizonStr)
+      items.push({date:e.deadlineDate, title:e.desc, time:e.allDay?null:(e.time||null), cls:'', sortT:e.time||'00:00'});
+  });
+  (_tasksAll||[]).forEach(t=>{
+    if(t.status==='done') return;
+    const dd=taskDisplayDate(t);
+    if(!dd) return;
+    if(dd<todayStr){ items.push({date:todayStr, title:t.desc, time:null, cls:'neg', tag:'overdue', sortT:'00:00'}); return; }
+    if(dd<=horizonStr)
+      items.push({date:dd, title:t.desc, time:t.time||null, cls:dd===todayStr?'warn':'muted', sortT:t.time||'99:99'});
+  });
+  (_invoices||[]).forEach(iv=>{
+    if(iv.status!=='unpaid' || !iv.dueDate) return;
+    if(iv.dueDate>=todayStr && iv.dueDate<=horizonStr)
+      items.push({date:iv.dueDate, title:`Invoice due · ${iv.client||''}`.trim(), sub:fmt(iv.amount||0), time:null, cls:'warn', sortT:'00:00'});
+  });
+
+  if(items.length===0){
+    el.innerHTML='<div class="agenda-empty">Nothing scheduled in the next few days.</div>';
+  }else{
+    const groups={};
+    items.forEach(it=>{ (groups[it.date]=groups[it.date]||[]).push(it); });
+    el.innerHTML=Object.keys(groups).sort().map(dateStr=>{
+      const gd=new Date(dateStr+'T00:00:00');
+      const label=dateStr===todayStr
+        ? 'Today'
+        : `${WEEKDAY_NAMES[gd.getDay()].slice(0,3)} ${gd.getDate()} ${MONTH_NAMES[gd.getMonth()].slice(0,3)}`;
+      const rows=groups[dateStr].sort((a,b)=>a.sortT.localeCompare(b.sortT)).map(it=>{
+        let meta=it.tag||(it.time||'');
+        if(it.sub) meta=meta?`${meta} · ${it.sub}`:it.sub;
+        return `<div class="evt ${it.cls||''}"><div class="e-title">${escAttr(it.title)}</div>${meta?`<div class="e-time">${escAttr(meta)}</div>`:''}</div>`;
+      }).join('');
+      return `<div class="agenda-day-label">${label}</div>${rows}`;
+    }).join('');
+  }
+
+  const subEl=document.getElementById('agenda-sub');
+  if(subEl){
+    const n=items.filter(i=>i.date===todayStr).length;
+    subEl.textContent=n?`${n} item${n>1?'s':''} today`:'Clear for today';
+  }
+  const foot=document.getElementById('agenda-foot');
+  if(foot) foot.textContent=_icloudError?`⚠️ iCloud: ${_icloudError}`:'↻ Synced read-only from iCloud';
 }
 async function loadTasksForInsights(){
   await Promise.all([loadTasksAll(), loadInvoices()]);
@@ -1479,6 +1881,41 @@ function toggleTodayAddTask(){
   renderToday();
 }
 
+function renderTodayHero(nOver,nDue,nUp,nDoneToday){
+  const el=document.getElementById('today-hero');
+  if(!el) return;
+  const todayStr=today();
+  const wk=new Date(todayStr+'T00:00:00'); wk.setDate(wk.getDate()-6);
+  const wkStr=wk.toISOString().split('T')[0];
+  const doneWeek=_tasksAll.filter(t=>{const d=taskDoneDateStr(t);return t.status==='done'&&d&&d>=wkStr&&d<=todayStr;}).length;
+  const totalActive=nOver+nDue+nUp;
+  const clearPct=totalActive?Math.round(nDoneToday/(nDoneToday+nOver+nDue)*100)||0:100;
+  const lbl=document.getElementById('today-hero-label');
+  if(lbl){const d=new Date(todayStr+'T00:00:00');lbl.textContent=`${WEEKDAY_NAMES[d.getDay()]}, ${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;}
+  el.innerHTML=`
+    <button class="hero-add" onclick="toggleTodayAddTask()">
+      <div>
+        <div class="hero-add-title">Add a task</div>
+        <div class="hero-add-sub">Jot one down, or fire it off from the Telegram bot and it shows up here.</div>
+      </div>
+      <div class="hero-add-plus">+</div>
+    </button>
+    <div class="os-grad ${nOver?'g-terra':'g-slate'}">
+      <div class="hs-k">Overdue</div>
+      <div><div class="hs-v">${nOver}</div><div class="hs-f">${nOver?'needs clearing':'all caught up'}</div></div>
+    </div>
+    <div class="os-grad ${nDue?'g-gold':'g-slate'}">
+      <div class="hs-k">Due today</div>
+      <div><div class="hs-v">${nDue}</div>
+      <div class="hs-bar"><i style="width:${clearPct}%"></i></div>
+      <div class="hs-f">${nDoneToday} done today</div></div>
+    </div>
+    <div class="os-grad g-green">
+      <div class="hs-k">Done this week</div>
+      <div><div class="hs-v">${doneWeek}</div><div class="hs-f">${nUp} coming up next 3 days</div></div>
+    </div>`;
+}
+
 function renderToday(){
   const pending=_tasksAll.filter(t=>t.status==='pending');
   const overdue=sortTodaySection(pending.filter(t=>t.daysUntilDeadline!=null && t.daysUntilDeadline<0));
@@ -1487,6 +1924,7 @@ function renderToday(){
   const upcoming=pending.filter(t=>t.daysUntilDeadline==null || t.daysUntilDeadline>0);
   const todayStr=today();
   const doneToday=_tasksAll.filter(t=>t.status==='done' && taskDoneDateStr(t)===todayStr);
+  renderTodayHero(overdue.length,dueToday.length,comingUp.length,doneToday.length);
 
   const parts=[];
   if(overdue.length) parts.push(`<span style="color:var(--negative)">${overdue.length} overdue</span>`);
@@ -2921,9 +3359,19 @@ function showPage(name){
   if(name==='reports')renderReports();
 }
 
+function railJump(page){
+  if(page==='calendar'){ showCategory('productivity'); showPage('calendar'); }
+  else if(page==='reports'){
+    showCategory('finance');
+    if(sessionStorage.getItem('ft_unlocked')==='1') showPage('reports');
+  }
+}
+
 function showCategory(cat){
   _activeCategory=cat;
   document.querySelectorAll('.category-tab').forEach(c=>c.classList.toggle('active',c.dataset.category===cat));
+  const sub=document.getElementById('brand-sub');
+  if(sub) sub.textContent=(cat==='finance'?'Finance':'Productivity');
   if(cat==='finance'&&sessionStorage.getItem('ft_unlocked')!=='1'){
     document.getElementById('finance-tabs').style.display='none';
     document.getElementById('productivity-tabs').style.display='none';
