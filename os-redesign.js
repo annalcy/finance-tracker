@@ -42,6 +42,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = { osMonthlyEntries, osTotals, osSpendingLevel, osMonthModel, osScopeEntries };
 }
 
+let osDockedControls = [];
 let osSelectedDate = null;
 let osPendingNavigation = null;
 const osPageInfo = {
@@ -99,6 +100,38 @@ function syncOsShell(locked = false) {
   const add = document.getElementById('header-add');
   add.textContent = _activeCategory === 'finance' ? '+ Add entry' : '+ Add task';
   add.hidden = locked;
+  dockOsControls(locked);
+}
+// Move the original controls so their state, IDs and event handlers survive.
+// Comment markers return controls to their own pages before the next navigation.
+function dockOsControls(locked = false) {
+  const target = document.getElementById('os-header-controls');
+  if (!target) return;
+  for (const {node, marker} of osDockedControls) {
+    if (marker.isConnected) { marker.replaceWith(node); }
+    else { node.remove(); }
+  }
+  osDockedControls = [];
+  target.replaceChildren();
+  target.hidden = locked;
+  if (locked) return;
+  const selectors = {
+    overview: '#page-overview .scope-switch',
+    spending: '#page-spending .os-period',
+    today: '#today-sort-toggle',
+    calendar: '#cal-view-toggle',
+    insights: '#page-insights .client-jump-links',
+    add: '#page-add .type-toggle',
+    records: '#page-records .filter-bar',
+    reports: '#report-view-toggle'
+  };
+  const control = document.querySelector(selectors[_currentPage] || ':not(*)');
+  target.dataset.page = _currentPage;
+  if (!control) {target.hidden = true;return;}
+  const marker = document.createComment('page controls');
+  control.before(marker);
+  target.append(control);
+  osDockedControls.push({node:control,marker});
 }
 function osQuickAdd() {
   if (_activeCategory === 'finance') { cancelEdit(); navigateOs('add'); }
@@ -175,6 +208,7 @@ function renderSpendingCalendar() {
       </aside>
     </div>
     <div class="report-shortcuts"><span>See the bigger picture</span><button onclick="navigateOs('reports','month')">Monthly report ↗</button><button onclick="navigateOs('reports','year')">By year ↗</button><button onclick="navigateOs('reports','alltime')">All time ↗</button><button onclick="osViewMonthRecords()">All records ↗</button></div>`;
+  dockOsControls();
 }
 function osSummaryHTML(model) {
   const net = model.income - model.expense;
