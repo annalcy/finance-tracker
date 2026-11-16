@@ -349,3 +349,55 @@ h3 {font-size:18px;font-weight:500;line-height:1.5}
 .hs-bar {background:var(--border)}
 .hs-bar>i {background:var(--accent-soft)}
 .task-desc {font-size:14px;font-weight:500}
+/* More colour, less visual weight. */
+:root[data-theme="light"] {
+  --bg:#F8F7F2;--surface:#FFFFFF;--surface-hover:#ECEDE5;
+  --ink:#28342D;--text-secondary:#606B5F;--text-muted:#788274;--border:#DCDFD3;
+  --negative:#B45236;--negative-soft:#CD8969;--negative-bg:#EDC2AC;--negative-text:#873E27;
+  --warning:#AC7A21;--warning-bg:#EDD58F;--warning-text:#6F5018;--warning-border:#D7BC72;
+}
+:root[data-theme="light"][data-accent="sage"] {
+  --accent:#416440;--accent-soft:#7E9C66;--accent-faint:#B5CA9F;
+  --accent-bg:#D0DDB9;--accent-text:#334F2D;--accent-tint:#EDF2E4;
+}
+:root[data-theme="light"] .os-nav.active {background:var(--accent);color:#FFF}
+:root[data-theme="light"] .summary-dot.clay {background:#CB7856}
+.os-money-summary {padding:13px 0;margin-bottom:24px}
+.os-money-summary>div {padding:0 22px}
+.os-money-summary>div>span {font-size:11px;margin-bottom:3px}
+.os-money-summary strong {font-size:20px;letter-spacing:-.025em;font-weight:450}
+#page-overview #metrics .metric {padding:15px 22px}
+#page-overview #metrics .metric-value {font-size:20px!important;letter-spacing:-.025em}
+.overview-toolbar {display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:24px}
+.scope-switch {display:flex;border:1px solid var(--border);padding:3px;border-radius:7px;gap:3px;background:var(--surface)}
+.scope-switch button {border:0;border-radius:4px;padding:8px 20px;cursor:pointer;background:none;color:var(--text-secondary);font-size:12px}
+.scope-switch button.active {background:var(--accent);color:var(--surface)}
+:root[data-theme="dark"] .scope-switch button.active {color:var(--bg)}
+.overview-category-heading {display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0 16px}
+.overview-category-heading h3 {font-size:19px}
+.overview-breakdowns .form-card {padding:22px 24px}
+.category-panel-title {display:flex;align-items:center;gap:10px;margin-bottom:23px}
+.category-panel-title h3 {margin:0;font-size:16px}
+.category-mark {display:flex;justify-content:center;align-items:center;width:28px;height:28px;border-radius:6px;font-size:19px}
+.expense-mark {background:var(--negative-bg);color:var(--negative-text)}
+.income-mark {background:var(--accent-bg);color:var(--accent-text)}
+.overview-breakdowns .quiet-progress {height:7px}
+@media(max-width:720px) {
+  .os-money-summary {padding:12px 0}
+  .os-money-summary>div {padding:0 12px}
+  .os-money-summary strong {font-size:17px}
+  .os-money-summary>div>span {font-size:10px}
+  #page-overview #metrics .metric {padding:13px 12px}
+  #page-overview #metrics .metric-value {font-size:18px!important}
+  .scope-switch button {padding:7px 16px}
+  .overview-toolbar {gap:10px}
+  .overview-category-heading {align-items:flex-start;flex-direction:column;gap:4px}
+}
+#page-overview[data-scope="year"] #goal-card,#page-overview[data-scope="year"] #week-card,#page-overview[data-scope="year"] #income-pred-card,
+#page-overview[data-scope="alltime"] #goal-card,#page-overview[data-scope="alltime"] #week-card,#page-overview[data-scope="alltime"] #income-pred-card {display:none!important}
+.month-category strong small {font-size:10px;color:var(--text-secondary);font-weight:400;margin-right:8px}
+.category-more {margin-top:19px;font-size:11px;color:var(--text-secondary)}
+.category-more summary {cursor:pointer;color:var(--accent)}
+#page-overview #metrics .metric {min-height:0;display:block;border-right:1px solid var(--border)}
+#page-overview #metrics .metric:last-child {border-right:0}
+#page-overview #metrics .metric-value.negative {color:var(--negative)!important}

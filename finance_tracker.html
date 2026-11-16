@@ -509,8 +509,8 @@
   .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
   .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
-<link rel="stylesheet" href="os-redesign.css">
-<script src="os-redesign.js" defer></script>
+<link rel="stylesheet" href="os-redesign.css?v=20261116-2">
+<script src="os-redesign.js?v=20261116-2" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -588,6 +588,7 @@
     </div>
 
   <div id="page-overview" class="page">
+    <div class="overview-toolbar"><div class="scope-switch" aria-label="Overview period"><button data-scope="month" onclick="setOverviewScope('month')">Month</button><button data-scope="year" onclick="setOverviewScope('year')">Year</button><button data-scope="alltime" onclick="setOverviewScope('alltime')">All time</button></div><span id="overview-period-caption" class="muted"></span></div>
     <div class="month-pills" id="overview-year-pills"></div>
     <div class="month-pills" id="overview-month-pills"></div>
     <div class="os-hero split">
@@ -600,6 +601,7 @@
       </button>
       <div class="metrics" id="metrics"></div>
     </div>
+    <div id="overview-categories"></div>
     <div class="form-card" id="goal-card" style="margin-bottom:1.5rem;display:none">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
         <div class="section-title" style="margin-bottom:0">Income goal</div>
@@ -652,7 +654,7 @@
       <div style="font-size:11px;color:var(--text-secondary);margin-top:10px">Add, edit, or mark entries paid via the Telegram bot (/addincome, /updateincome).</div>
     </div>
     <div class="os-card">
-      <div class="os-card-head"><div class="os-card-title">All entries this month</div></div>
+      <div class="os-card-head"><div class="os-card-title" id="overview-entries-title">All entries this month</div><button class="text-action" onclick="openOverviewReport()">Explore report ↗</button></div>
       <div class="os-card-body">
         <div class="tbl-head"><span>Description</span><span>Category</span><span>Date</span><span class="thr">Amount</span><span></span></div>
         <div class="entries-list" id="recent-entries"></div>
@@ -1400,6 +1402,7 @@ function entryHTML(e){
 }
 
 function renderOverview(){
+  if(typeof renderMoneyOverview==='function'){renderMoneyOverview();return;}
   const entries=getEntries();
   const years=[...new Set(entries.map(e=>new Date(e.date).getFullYear()))];
   if(!years.includes(selYear))years.push(selYear);

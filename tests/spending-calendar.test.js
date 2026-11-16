@@ -1,6 +1,6 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {osMonthModel,osTotals,osSpendingLevel,osMonthlyEntries} = require('../os-redesign');
+const {osMonthModel,osTotals,osSpendingLevel,osMonthlyEntries,osScopeEntries} = require('../os-redesign');
 const records = [
   {id:1,date:'2026-09-18',type:'expense',amount:480},
   {id:2,date:'2026-09-18',type:'expense',amount:620},
@@ -30,4 +30,11 @@ test('historical months and leap years remain available',()=>{
 });
 test('numeric strings cannot concatenate monthly totals',()=>{
   assert.deepEqual(osTotals([{type:'income',amount:'765'},{type:'income',amount:'1300'},{type:'expense',amount:'180'}]),{income:2065,expense:180});
+});
+
+test('overview scopes keep the selected year and include all past records in all-time',()=>{
+  assert.deepEqual(osTotals(osScopeEntries(records,'month',2026,8)),{income:5000,expense:1280});
+  assert.deepEqual(osTotals(osScopeEntries(records,'year',2026,8)),{income:5000,expense:2279});
+  assert.deepEqual(osTotals(osScopeEntries(records,'year',2022,8)),{income:2000,expense:0});
+  assert.deepEqual(osTotals(osScopeEntries(records,'alltime',2026,8)),{income:7000,expense:2279});
 });

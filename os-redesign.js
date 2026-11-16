@@ -10,6 +10,11 @@ function osMonthlyEntries(entries, year, month) {
   const prefix = osMonthKey(year, month) + '-';
   return entries.filter(e => typeof e.date === 'string' && e.date.startsWith(prefix));
 }
+function osScopeEntries(entries, scope, year, month) {
+  if (scope === 'alltime') return entries;
+  if (scope === 'year') return entries.filter(e => typeof e.date === 'string' && e.date.startsWith(`${year}-`));
+  return osMonthlyEntries(entries, year, month);
+}
 function osTotals(entries) {
   return entries.reduce((out, entry) => {
     const amount = Number(entry.amount);
@@ -34,7 +39,7 @@ function osMonthModel(entries, year, month, budget) {
   return { days, entries: rows, offset: (new Date(Date.UTC(year, month, 1)).getUTCDay() + 6) % 7, ...osTotals(rows) };
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { osMonthlyEntries, osTotals, osSpendingLevel, osMonthModel };
+  module.exports = { osMonthlyEntries, osTotals, osSpendingLevel, osMonthModel, osScopeEntries };
 }
 
 let osSelectedDate = null;
@@ -100,7 +105,7 @@ function osQuickAdd() {
   else { navigateOs('today'); toggleTodayAddTask(); }
 }
 function osCurrency(amount) {
-  return 'HK$' + Number(amount).toLocaleString('en-HK', { maximumFractionDigits: 2 });
+  return (Number(amount)<0?'−':'') + 'HK$' + Math.abs(Number(amount)).toLocaleString('en-HK', { maximumFractionDigits: 2 });
 }
 function osMonthLabel() {
   return new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(selYear, selMonth, 1)));
@@ -190,12 +195,14 @@ function osViewMonthRecords() {
   document.getElementById('f-month-filter').value = osMonthKey(selYear, selMonth);
   renderRecords();
 }
-function osCategoryHTML(entries, type) {
+function osCategoryHTML(entries, type, limit = Infinity) {
   const totals = new Map();
   entries.filter(e=>e.type===type).forEach(e=>totals.set(e.cat||'Uncategorised',(totals.get(e.cat||'Uncategorised')||0)+Number(e.amount||0)));
   const sorted = [...totals].sort((a,b)=>b[1]-a[1]);
   const total = sorted.reduce((sum,[,amount])=>sum+amount,0);
-  return sorted.length?sorted.map(([cat,amount])=>`<div class="month-category"><div><span>${osEscape(cat)}</span><strong>${osCurrency(amount)}</strong></div><div class="quiet-progress"><span style="width:${total?amount/total*100:0}%;background:var(--${type==='income'?'accent-soft':'negative-soft'})"></span></div></div>`).join(''):'<p class="no-entries">No '+type+' logged this month.</p>';
+  const row = ([cat,amount]) => `<div class="month-category"><div><span>${osEscape(cat)}</span><strong><small>${total?Math.round(amount/total*100):0}%</small> ${osCurrency(amount)}</strong></div><div class="quiet-progress"><span style="width:${total?amount/total*100:0}%;background:var(--${type==='income'?'accent-soft':'negative-soft'})"></span></div></div>`;
+  if (!sorted.length) return '<p class="no-entries">No '+type+' logged in this period.</p>';
+  return sorted.slice(0,limit).map(row).join('')+(sorted.length>limit?`<details class="category-more"><summary>Show ${sorted.length-limit} more categories</summary>${sorted.slice(limit).map(row).join('')}</details>`:'');
 }
 function renderMonthlyReport() {
   const entries = osMonthlyEntries(getEntries(),selYear,selMonth);
@@ -225,4 +232,48 @@ if (typeof document !== 'undefined') {
       document.getElementById('settings-popover').classList.remove('open');
     }
   });
+}
+
+// Money overview: one set of totals, categories and records for each scope.
+let osOverviewScope = 'month';
+function setOverviewScope(scope) {
+  if (!['month','year','alltime'].includes(scope)) return;
+  osOverviewScope = scope;
+  renderMoneyOverview();
+}
+function openOverviewReport() {
+  repYear = selYear;
+  navigateOs('reports', osOverviewScope === 'alltime' ? 'alltime' : osOverviewScope === 'year' ? 'year' : 'month');
+}
+function renderMoneyOverview() {
+  document.getElementById('page-overview').dataset.scope = osOverviewScope;
+  const entries = getEntries();
+  const scoped = osScopeEntries(entries, osOverviewScope, selYear, selMonth);
+  const totals = osTotals(scoped);
+  const all = osOverviewScope === 'alltime';
+  const monthly = osOverviewScope === 'month';
+  const caption = all ? 'Across your full history' : monthly ? osMonthLabel() : String(selYear);
+  document.querySelectorAll('[data-scope]').forEach(button => {
+    const active = button.dataset.scope === osOverviewScope;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  document.getElementById('overview-period-caption').textContent = caption;
+  const years = [...new Set(entries.map(e => Number(String(e.date).slice(0,4))).filter(Number.isFinite).concat(selYear))].sort((a,b)=>b-a);
+  const yearPills = document.getElementById('overview-year-pills');
+  yearPills.style.display = all ? 'none' : '';
+  yearPills.innerHTML = years.map(year=>`<button class="pill${year===selYear?' active':''}" onclick="selYear=${year};renderMoneyOverview()">${year}</button>`).join('');
+  const monthPills = document.getElementById('overview-month-pills');
+  monthPills.style.display = monthly ? '' : 'none';
+  monthPills.innerHTML = MONTHS.map((name,month)=>`<button class="pill${month===selMonth?' active':''}" onclick="selMonth=${month};renderMoneyOverview()">${name}</button>`).join('');
+  document.getElementById('metrics').innerHTML = `<div class="metric"><div class="metric-label">Income</div><div class="metric-value">${osCurrency(totals.income)}</div></div><div class="metric"><div class="metric-label">Expenses</div><div class="metric-value">${osCurrency(totals.expense)}</div></div><div class="metric"><div class="metric-label">Net</div><div class="metric-value${totals.income<totals.expense?' negative':''}">${osCurrency(totals.income-totals.expense)}</div></div>`;
+  document.getElementById('overview-categories').innerHTML = `<div class="overview-category-heading"><h3>Inside your money</h3><span class="muted">${osEscape(caption)} · ${scoped.length.toLocaleString()} records</span></div><div class="monthly-breakdowns overview-breakdowns"><section class="form-card"><div class="category-panel-title"><span class="category-mark expense-mark">↗</span><h3>Spending by category</h3></div>${osCategoryHTML(scoped,'expense',6)}</section><section class="form-card"><div class="category-panel-title"><span class="category-mark income-mark">↙</span><h3>Income by category</h3></div>${osCategoryHTML(scoped,'income',6)}</section></div>`;
+  document.getElementById('overview-entries-title').textContent = monthly ? 'Entries this month' : all ? 'Latest entries · all time' : `Latest entries · ${selYear}`;
+  const visible = monthly ? scoped : scoped.slice(0,20);
+  document.getElementById('recent-entries').innerHTML = visible.length ? visible.map(entryHTML).join('') : '<div class="no-entries">No entries in this period. Choose another month or year to explore your history.</div>';
+  document.getElementById('budget-card').style.display = monthly ? '' : 'none';
+  if (monthly) renderBudget(totals.expense);
+  // These existing cards are explicitly about the selected month/current week.
+  if (monthly) {renderGoalCard();renderWeekCard();loadIncomePred();}
+  else ['goal-card','week-card','income-pred-card'].forEach(id=>document.getElementById(id).style.display='none');
 }
