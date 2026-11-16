@@ -471,3 +471,31 @@ h3 {font-size:18px;font-weight:500;line-height:1.5}
 .more-client-cards {grid-column:1 / -1;font-size:12px;color:var(--accent)}
 .more-client-cards>summary {cursor:pointer;padding:8px 0}
 .more-client-cards>.client-card-grid {margin-top:13px}
+/* A complete, searchable client directory; personal favours stay separate. */
+.sr-only {position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.client-directory-tools {display:flex;align-items:center;gap:13px;flex-wrap:wrap;position:sticky;top:0;z-index:30;background:var(--bg);border-bottom:1px solid var(--border);padding:12px 0;margin:-10px 0 21px}
+.client-jump-links {display:flex;gap:5px;margin-right:auto}
+.client-jump-links button {border:0;border-radius:6px;background:var(--accent-bg);color:var(--accent-text);font-size:11px;cursor:pointer;padding:8px 12px;white-space:nowrap}
+.client-jump-links button:hover {background:var(--accent-faint)}
+.client-search input {border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--ink);font-size:12px;padding:8px 12px;width:210px;max-width:100%;min-height:35px}
+#client-directory-count {font-size:10px;white-space:nowrap}
+.personal-work {border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:13px 16px;margin:0 0 25px;font-size:12px}
+.personal-work summary {cursor:pointer;color:var(--ink)}
+.personal-work summary span {font-size:10px;color:var(--text-secondary);margin-left:14px}
+.personal-work>p {font-size:11px;color:var(--text-secondary);margin-top:12px}
+.personal-work .client-task-preview {padding:11px 0}
+#client-work-title,#client-health-title {scroll-margin-top:78px}
+.client-status.history-client,.client-status.quiet-client {background:var(--surface-hover);color:var(--text-secondary)}
+.client-health-card.quiet-client {border-top-color:var(--border-strong)}
+.client-history-summary {padding:25px 0 15px;font-size:12px;color:var(--text-secondary)}
+.client-history-summary p {font-size:11px;margin-top:8px}
+.client-income-history {font-size:10px;color:var(--text-secondary);border-top:1px solid var(--border);padding-top:12px;margin-top:13px}
+@media(max-width:720px) {
+  .client-directory-tools {gap:9px;padding:11px 0}
+  .client-jump-links {width:100%}
+  .client-jump-links button {font-size:10px}
+  .client-search {flex:1;min-width:0}
+  .client-search input {width:100%}
+  .personal-work summary span {display:block;margin:5px 0 0 16px}
+  #client-work-title,#client-health-title {scroll-margin-top:120px}
+}

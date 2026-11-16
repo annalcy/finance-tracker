@@ -17,7 +17,7 @@ test('client workload groups aliases and separates open, done, and overdue work'
   assert.equal(studio.count,3);assert.equal(studio.open,1);assert.equal(studio.done,2);assert.equal(studio.overdue,1);
   assert.equal(studio.knownTiming,1);assert.equal(studio.onTime,1);
   assert.deepEqual(studio.turnaround,[2]);
-  assert.ok(rows.find(r=>r.name==='(no client)'));
+  assert.ok(!rows.find(r=>r.name==='(no client)'));
 });
 test('health separates this month from older overdue work and uses invoice due dates',()=>{
   const entries=[{client:'Studio',type:'income',date:'2026-11-10',amount:'1400'},{client:'Studio',type:'income',date:'2026-10-10',amount:9000}];
@@ -32,9 +32,42 @@ test('health separates this month from older overdue work and uses invoice due d
   assert.equal(studio.done,1);assert.equal(studio.open,1);assert.equal(studio.hours,2.5);
   assert.deepEqual(studio.paidDays,[10]);
   const agency=rows.find(r=>r.name==='agency');assert.equal(agency.open,0);assert.equal(agency.overdue,1);
-  assert.ok(!rows.find(r=>r.name==='old client'));assert.ok(!rows.find(r=>r.name==='(no client)'));
+  assert.ok(rows.find(r=>r.name==='old client'));assert.equal(rows.find(r=>r.name==='old client').done,0);assert.ok(!rows.find(r=>r.name==='(no client)'));
 });
 test('empty client data returns a usable empty state model',()=>{
   assert.deepEqual(osClientWorkModel([],normalize,dateOf,'2026-11-16'),[]);
   assert.deepEqual(osClientHealthModel([],[],[],normalize,dateOf,'2026-11-16'),[]);
+});
+
+test('personal helping-out markers never become clients and tasks are not mutated',()=>{
+  const personal=[{client:'//',status:'pending',desc:'Help a friend'},{client:' / ',status:'done'},{client:'Family',status:'pending'},{status:'pending'}];
+  const before=JSON.stringify(personal);
+  const normal=value=>value?value.trim().toLowerCase():'(no client)';
+  assert.deepEqual(osClientWorkModel(personal,normal,dateOf,'2026-11-16'),[]);
+  assert.deepEqual(osClientHealthModel(personal,[{client:'Family',type:'income',date:'2026-11-01',amount:100}],[],normal,dateOf,'2026-11-16'),[]);
+  assert.equal(JSON.stringify(personal),before);
+});
+test('directory includes income-only and invoice-only clients across all history',()=>{
+  const entries=[{client:'Past studio',type:'income',date:'2022-01-01',amount:'2000'},{client:'Grocery shop',type:'expense',date:'2026-11-01',amount:100}];
+  const invoices=[{client:'Invoice studio',status:'paid',issueDate:'2025-01-01',paidDate:'2025-01-11',amount:500}];
+  const rows=osClientWorkModel([],normalize,dateOf,'2026-11-16',entries,invoices);
+  assert.deepEqual(rows.map(r=>r.name).sort(),['invoice studio','past studio']);
+  assert.equal(rows.find(r=>r.name==='past studio').count,0);
+  assert.equal(rows.find(r=>r.name==='past studio').income,2000);
+  const health=osClientHealthModel([],entries,invoices,normalize,dateOf,'2026-11-16');
+  assert.equal(health.length,2);assert.equal(health.find(r=>r.name==='past studio').income,0);
+  assert.deepEqual(health.find(r=>r.name==='invoice studio').paidDays,[10]);
+});
+test('completing helping-out tasks keeps the task but does not prompt for an invoice',async()=>{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const {osIsPersonalClient}=require('../os-redesign');
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../finance_tracker.html'),'utf8');
+  const handler=html.match(/async function markTaskDone\(id\)\{[\s\S]*?\n\}/)[0];
+  for(const [client,expected] of [['//',null],['Studio',123]]) {
+    const calls=[];
+    const ctx={_tasksAll:[{id:123,client,desc:'A task',status:'pending'}],_pendingPaymentPromptId:null,osIsPersonalClient,normalizeClientName:normalize,refreshCurrentTaskView:()=>{},fetch:async(url,options)=>{calls.push(options);},TASKS_API:'/tasks',console};
+    vm.createContext(ctx);vm.runInContext(handler,ctx);await ctx.markTaskDone(123);
+    assert.equal(ctx._tasksAll.length,1);assert.equal(ctx._tasksAll[0].status,'done');
+    assert.equal(ctx._pendingPaymentPromptId,expected);assert.equal(calls[0].method,'PATCH');
+  }
 });

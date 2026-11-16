@@ -509,8 +509,8 @@
   .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
   .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
-<link rel="stylesheet" href="os-redesign.css?v=20261116-3">
-<script src="os-redesign.js?v=20261116-3" defer></script>
+<link rel="stylesheet" href="os-redesign.css?v=20261116-4">
+<script src="os-redesign.js?v=20261116-4" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -749,8 +749,10 @@
   </div>
 
   <div id="page-insights" class="page">
+    <div class="client-directory-tools"><div class="client-jump-links"><button onclick="jumpToClientSection('client-work-title')">👥 By client</button><button onclick="jumpToClientSection('client-health-title')">💚 Client health</button></div><label class="client-search"><span class="sr-only">Search all clients</span><input type="search" id="client-directory-search" placeholder="Find a client…" oninput="filterClientDirectory(this.value)"></label><span id="client-directory-count" class="muted"></span></div>
+    <details id="insights-personal-work" class="personal-work"></details>
     <section class="client-insights-section" aria-labelledby="client-work-title">
-      <div class="insight-section-heading"><span class="section-emoji" aria-hidden="true">👥</span><div><h3 id="client-work-title">By client</h3><p>Your workload, progress, and what’s still open.</p></div><span class="insight-period-label">All-time tasks</span></div>
+      <div class="insight-section-heading"><span class="section-emoji" aria-hidden="true">👥</span><div><h3 id="client-work-title">By client</h3><p>All clients from tasks, income, and invoices. Nothing hidden.</p></div><span class="insight-period-label">All-time history</span></div>
       <div id="insights-client-chart" class="client-card-grid"></div>
     </section>
     <section class="client-insights-section" aria-labelledby="client-health-title">
@@ -1810,7 +1812,7 @@ function taskCardHTML(t,opts){
     ?`<span class="task-badge" style="background:var(--negative-bg);color:var(--negative-text)">HARD</span>`
     :`<span class="task-badge" style="background:var(--warning-bg);color:var(--warning-text)">SOFT</span>`;
   const metaParts=[badge];
-  if(t.client) metaParts.push(t.client);
+  if(t.client) metaParts.push(/^\/+$/u.test(t.client.trim())?'🏡 Personal / helping out':t.client);
   metaParts.push(`due ${t.deadlineDate||'—'}`);
 
   let borderCls='';
@@ -1845,7 +1847,7 @@ function taskEditFormHTML(t){
   return `<div class="task-card" style="flex-direction:column;align-items:stretch;gap:10px">
     <div class="form-row">
       <div class="form-group"><label>Description</label><input type="text" id="te-desc-${t.id}" value="${escAttr(t.desc)}"/></div>
-      <div class="form-group"><label>Client</label><input type="text" id="te-client-${t.id}" value="${escAttr(t.client)}"/></div>
+      <div class="form-group"><label>Client (// for personal)</label><input type="text" id="te-client-${t.id}" value="${escAttr(t.client)}"/></div>
     </div>
     <div class="form-row three">
       <div class="form-group"><label>Deadline</label><input type="date" id="te-deadline-${t.id}" value="${t.deadlineDate||''}"/></div>
@@ -2059,7 +2061,7 @@ function addTaskFormHTML(dateStr){
   return `<div class="task-card" style="flex-direction:column;align-items:stretch;gap:10px;margin-top:10px">
     <div class="form-row">
       <div class="form-group"><label>Description</label><input type="text" id="at-desc" placeholder="What was it?"/></div>
-      <div class="form-group"><label>Client</label><input type="text" id="at-client"/></div>
+      <div class="form-group"><label>Client (// for personal)</label><input type="text" id="at-client"/></div>
     </div>
     <div class="form-row three">
       <div class="form-group"><label>Deadline</label><input type="date" id="at-deadline" value="${dateStr}"/></div>
@@ -2220,7 +2222,7 @@ function renderCalAgenda(byDate,todayStr){
 const CLIENT_ALIASES = {
   ck:'CK', drip:'Drip Music', 'drip music':'Drip Music', lawrence:'Lawrence', sony:'Sony',
   cbeauty:'Cbeauty', momo:'Momo', isnhk:'ISNHK', minizine:'Minizine', interlude:'Interlude', sam:'Sam',
-  oscar:'Oscar',
+  oscar:'Oscar', livenation:'Live Nation', 'live nation':'Live Nation',
 };
 // Rough per-client rate for the "estimated value" pre-fill when marking a task
 // done — Anna edits the amount before confirming, this is just a starting point.
@@ -2244,9 +2246,10 @@ function estimateTaskValueInfo(t){
 function normalizeClientName(raw){
   const s=(raw||'').trim();
   if(!s) return '(no client)';
+  if(/^\/+$/u.test(s)) return 'Personal / helping out';
   const key=s.toLowerCase();
   if(CLIENT_ALIASES[key]) return CLIENT_ALIASES[key];
-  return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+  return s===s.toUpperCase()?s:s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
 }
 
 function dateStrAddDays(dateStr,delta){
@@ -2804,7 +2807,7 @@ async function markTaskDone(id){
   const doneAt=new Date().toISOString();
   const idxAll=_tasksAll.findIndex(x=>String(x.id)===String(id));
   if(idxAll>=0) _tasksAll[idxAll]={..._tasksAll[idxAll],status:'done',doneAt};
-  _pendingPaymentPromptId=id;
+  _pendingPaymentPromptId=idxAll>=0&&!osIsPersonalClient(normalizeClientName(_tasksAll[idxAll].client))?id:null;
   refreshCurrentTaskView();
   try{
     await fetch(`${TASKS_API}?id=${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'done',doneAt})});
@@ -2815,7 +2818,7 @@ async function markTaskDone(id){
 
 async function confirmAddToPendingPayments(id){
   const t=findTaskById(id);
-  if(!t) return;
+  if(!t || osIsPersonalClient(normalizeClientName(t.client))) return;
   const amountInput=document.getElementById(`pp-amount-${id}`);
   const amount=parseFloat(amountInput.value);
   if(!amount || amount<=0){

@@ -284,12 +284,20 @@ function osClientIcon(name) {
   for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return icons[hash % icons.length];
 }
-function osClientWorkModel(tasks, normalize, dateOf, todayKey) {
+function osIsPersonalClient(name) {
+  const key = String(name || '').trim().toLowerCase();
+  return !key || /^\/+$/u.test(key) || ['(no client)','personal','family','friend','friends','personal / unassigned','personal / helping out'].includes(key);
+}
+function osClientWorkModel(tasks, normalize, dateOf, todayKey, entries = [], invoices = []) {
   const clients = new Map();
+  function get(name) {
+    if (!clients.has(name)) clients.set(name, {name, count:0,done:0,open:0,overdue:0,onTime:0,knownTiming:0,turnaround:[],active:[],income:0,invoiceCount:0});
+    return clients.get(name);
+  }
   for (const task of tasks) {
     const name = normalize(task.client);
-    if (!clients.has(name)) clients.set(name, {name, count:0,done:0,open:0,overdue:0,onTime:0,knownTiming:0,turnaround:[],active:[]});
-    const row = clients.get(name);
+    if (osIsPersonalClient(name)) continue;
+    const row = get(name);
     row.count++;
     if (task.status === 'done') {
       row.done++;
@@ -306,18 +314,29 @@ function osClientWorkModel(tasks, normalize, dateOf, todayKey) {
       if (task.deadlineDate && task.deadlineDate<todayKey) row.overdue++;
     }
   }
+  for (const entry of entries) {
+    const name = normalize(entry.client);
+    if (entry.type==='income' && !osIsPersonalClient(name)) get(name).income += Number(entry.amount)||0;
+  }
+  for (const invoice of invoices) {
+    const name = normalize(invoice.client);
+    if (!osIsPersonalClient(name)) get(name).invoiceCount++;
+  }
   return [...clients.values()].sort((a,b)=>b.overdue-a.overdue||b.open-a.open||b.count-a.count||a.name.localeCompare(b.name));
 }
 function osClientHealthModel(tasks, entries, invoices, normalize, dateOf, todayKey) {
   const month = todayKey.slice(0,7);
   const clients = new Map();
   function get(name) {
-    if (!clients.has(name)) clients.set(name,{name,done:0,open:0,overdue:0,hours:0,income:0,unpaid:0,unpaidCount:0,overdueInvoices:0,paidDays:[]});
+    if (!clients.has(name)) clients.set(name,{name,done:0,open:0,overdue:0,hours:0,income:0,unpaid:0,unpaidCount:0,overdueInvoices:0,paidDays:[],lifetimeIncome:0,historyTasks:0});
     return clients.get(name);
+  }
+  for (const source of osClientWorkModel(tasks,normalize,dateOf,todayKey,entries,invoices)) {
+    const row = get(source.name); row.lifetimeIncome=source.income; row.historyTasks=source.count;
   }
   for (const task of tasks) {
     const name = normalize(task.client);
-    if (name==='(no client)') continue;
+    if (osIsPersonalClient(name)) continue;
     const doneThisMonth = task.status==='done' && dateOf(task)?.startsWith(month);
     const openThisMonth = task.status!=='done' && task.deadlineDate?.startsWith(month);
     const overdue = task.status!=='done' && task.deadlineDate && task.deadlineDate<todayKey;
@@ -329,11 +348,11 @@ function osClientHealthModel(tasks, entries, invoices, normalize, dateOf, todayK
     if (doneThisMonth || openThisMonth) row.hours += (Number(task.estimateMinutes)||0)/60;
   }
   for (const entry of entries) {
-    if (entry.type==='income' && entry.client && entry.date?.startsWith(month)) get(normalize(entry.client)).income+=Number(entry.amount)||0;
+    if (entry.type==='income' && !osIsPersonalClient(normalize(entry.client)) && entry.date?.startsWith(month)) get(normalize(entry.client)).income+=Number(entry.amount)||0;
   }
   for (const invoice of invoices) {
-    if (!invoice.client) continue;
     const name = normalize(invoice.client);
+    if (osIsPersonalClient(name)) continue;
     if (invoice.status==='unpaid') {
       const row = get(name);
       row.unpaid += Number(invoice.amount)||0;
@@ -351,40 +370,62 @@ function osClientHealthModel(tasks, entries, invoices, normalize, dateOf, todayK
   return [...clients.values()].sort((a,b)=>(b.overdue+b.overdueInvoices)-(a.overdue+a.overdueInvoices)||b.unpaidCount-a.unpaidCount||b.open-a.open||a.name.localeCompare(b.name));
 }
 function osClientDisplayName(name) {return name==='(no client)'?'Personal / unassigned':name;}
-function osClientCardsHTML(cards) {
-  return cards.slice(0,4).join('')+(cards.length>4?`<details class="more-client-cards"><summary>Show ${cards.length-4} more clients</summary><div class="client-card-grid">${cards.slice(4).join('')}</div></details>`:'');
+let osClientSearch = '';
+function osClientCardsHTML(cards) { return cards.join(''); }
+function osFilterClients(rows) {
+  const query = osClientSearch.trim().toLocaleLowerCase();
+  return query ? rows.filter(row=>row.name.toLocaleLowerCase().includes(query)) : rows;
+}
+function filterClientDirectory(value) {
+  osClientSearch = value;
+  renderClientWorkCards(); renderClientHealthCards();
+}
+function jumpToClientSection(id) {
+  document.getElementById(id).scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
+}
+function renderPersonalWorkNote() {
+  const tasks = _tasksAll.filter(task=>osIsPersonalClient(normalizeClientName(task.client)));
+  const el = document.getElementById('insights-personal-work');
+  el.hidden = !tasks.length;
+  el.innerHTML = `<summary>🏡 Personal & helping out · ${tasks.length} task${tasks.length===1?'':'s'} <span>Separate from client work</span></summary><p>Tasks marked // (or without a client) still appear in Today and Calendar.</p>${tasks.map(task=>`<div class="client-task-preview"><span>${osEscape(task.desc||'Untitled task')}</span><small>${task.status==='done'?'✓ Done':'📌 Open'}${task.deadlineDate?' · '+osEscape(task.deadlineDate):''}</small></div>`).join('')}`;
 }
 function renderClientWorkCards() {
-  const rows = osClientWorkModel(_tasksAll,normalizeClientName,taskDoneDateStr,today());
+  const allRows = osClientWorkModel(_tasksAll,normalizeClientName,taskDoneDateStr,today(),_entries||[],_invoices||[]);
+  const rows = osFilterClients(allRows);
+  document.getElementById('client-directory-count').textContent = `${rows.length} of ${allRows.length} clients`;
+  renderPersonalWorkNote();
   const el = document.getElementById('insights-client-chart');
-  if (!rows.length) {el.innerHTML='<div class="client-empty"><span aria-hidden="true">🌱</span><h4>Your clients will appear here</h4><p>Add a client name to a task to start seeing your workload.</p><button class="text-action" onclick="osQuickAdd()">+ Add a task</button></div>';return;}
+  if (!rows.length && osClientSearch.trim()) {el.innerHTML='<div class="client-empty">No clients match your search. Try another name.</div>';return;}
+  if (!rows.length) {el.innerHTML='<div class="client-empty"><span aria-hidden="true">🌱</span><h4>Your clients will appear here</h4><p>A named client on a task, income entry, or invoice will appear here.</p><button class="text-action" onclick="osQuickAdd()">+ Add a task</button></div>';return;}
   const cards = rows.map(row=>{
-    const pct = Math.round(row.done/row.count*100);
+    const pct = row.count?Math.round(row.done/row.count*100):0;
     const timing = row.knownTiming?Math.round(row.onTime/row.knownTiming*100)+'% on time':'No completion timing yet';
     const average = row.turnaround.length?Math.round(row.turnaround.reduce((sum,n)=>sum+n,0)/row.turnaround.length*10)/10:null;
     const active = [...row.active].sort((a,b)=>(a.deadlineDate||'9999').localeCompare(b.deadlineDate||'9999'));
-    return `<article class="client-work-card"><header class="client-card-header"><span class="client-avatar" aria-hidden="true">${row.name==='(no client)'?'🏡':osClientIcon(row.name)}</span><div><h4>${osEscape(osClientDisplayName(row.name))}</h4><span>${row.count} task${row.count===1?'':'s'} in total</span></div>${row.overdue?'<span class="client-status needs-attention">⏰ '+row.overdue+' overdue</span>':row.open?'<span class="client-status in-progress">In progress</span>':'<span class="client-status on-track">✓ All done</span>'}</header><div class="client-work-stats"><div><span aria-hidden="true">📌</span><strong>${row.open}</strong><small>Open</small></div><div><span aria-hidden="true">✅</span><strong>${row.done}</strong><small>Done</small></div><div><span aria-hidden="true">⏰</span><strong class="${row.overdue?'negative':''}">${row.overdue}</strong><small>Overdue</small></div></div><div class="client-progress-caption"><span>Completed</span><strong>${pct}%</strong></div><div class="quiet-progress client-progress" role="progressbar" aria-label="${osEscape(osClientDisplayName(row.name))} tasks completed" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%;background:var(--accent-soft)"></span></div><div class="client-card-foot"><span>🎯 ${timing}</span>${average!=null?`<span>↳ ${average} days avg turnaround</span>`:''}</div>${active.length?`<details class="client-task-details"><summary>See ${active.length} open task${active.length===1?'':'s'}</summary>${active.map(task=>`<div class="client-task-preview"><span>${osEscape(task.desc||'Untitled task')}</span><small class="${task.deadlineDate&&task.deadlineDate<today()?'negative':''}">${task.deadlineDate?'Due '+osEscape(task.deadlineDate):'No deadline'}</small></div>`).join('')}</details>`:''}</article>`;
+    return `<article class="client-work-card"><header class="client-card-header"><span class="client-avatar" aria-hidden="true">${osClientIcon(row.name)}</span><div><h4>${osEscape(osClientDisplayName(row.name))}</h4><span>${row.count?row.count+' task'+(row.count===1?'':'s')+' in total':'Income / invoice history'}</span></div>${!row.count?'<span class="client-status history-client">Past records</span>':row.overdue?'<span class="client-status needs-attention">⏰ '+row.overdue+' overdue</span>':row.open?'<span class="client-status in-progress">In progress</span>':'<span class="client-status on-track">✓ All done</span>'}</header>${row.count?`<div class="client-work-stats"><div><span aria-hidden="true">📌</span><strong>${row.open}</strong><small>Open</small></div><div><span aria-hidden="true">✅</span><strong>${row.done}</strong><small>Done</small></div><div><span aria-hidden="true">⏰</span><strong class="${row.overdue?'negative':''}">${row.overdue}</strong><small>Overdue</small></div></div><div class="client-progress-caption"><span>Completed</span><strong>${pct}%</strong></div><div class="quiet-progress client-progress" role="progressbar" aria-label="${osEscape(osClientDisplayName(row.name))} tasks completed" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%;background:var(--accent-soft)"></span></div><div class="client-card-foot"><span>🎯 ${timing}</span>${average!=null?`<span>↳ ${average} days avg turnaround</span>`:''}</div>`:`<div class="client-history-summary"><span>📁 ${row.income?'Income history available':'Invoice history available'}</span><p>No tasks logged for this client yet.</p></div>`}${row.count&&row.income?'<div class="client-income-history">📁 Also recorded in income history</div>':''}${active.length?`<details class="client-task-details"><summary>See ${active.length} open task${active.length===1?'':'s'}</summary>${active.map(task=>`<div class="client-task-preview"><span>${osEscape(task.desc||'Untitled task')}</span><small class="${task.deadlineDate&&task.deadlineDate<today()?'negative':''}">${task.deadlineDate?'Due '+osEscape(task.deadlineDate):'No deadline'}</small></div>`).join('')}</details>`:''}</article>`;
   });
   el.innerHTML = osClientCardsHTML(cards);
 }
 function renderClientHealthCards() {
   const todayKey = today();
-  const rows = osClientHealthModel(_tasksAll,_entries||[],_invoices||[],normalizeClientName,taskDoneDateStr,todayKey);
+  const rows = osFilterClients(osClientHealthModel(_tasksAll,_entries||[],_invoices||[],normalizeClientName,taskDoneDateStr,todayKey));
   document.getElementById('client-health-period').textContent = new Intl.DateTimeFormat('en',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(todayKey+'T12:00:00Z'));
   const el = document.getElementById('insights-client-health');
+  if (!rows.length && osClientSearch.trim()) {el.innerHTML='<div class="client-empty">No clients match your search.</div>';return;}
   if (!rows.length) {el.innerHTML='<div class="client-empty"><span aria-hidden="true">🌤️</span><h4>A quiet month so far</h4><p>Client activity, income, and unpaid invoices will appear here as you log them.</p></div>';return;}
   const cards = rows.map(row=>{
     const attention = row.overdue || row.overdueInvoices;
-    const tone = attention?'needs-attention':row.unpaidCount?'awaiting-payment':row.open?'in-progress':'on-track';
-    const status = row.overdueInvoices?'🧾 Payment overdue':row.overdue?'⏰ Overdue work':row.unpaidCount?'🧾 Payment pending':row.open?'📌 In progress':'✓ Up to date';
+    const quiet = !row.done && !row.open && !row.overdue && !row.overdueInvoices && !row.unpaidCount && !row.income;
+    const tone = quiet?'quiet-client':attention?'needs-attention':row.unpaidCount?'awaiting-payment':row.open?'in-progress':'on-track';
+    const status = quiet?'🌙 No activity this month':row.overdueInvoices?'🧾 Payment overdue':row.overdue?'⏰ Overdue work':row.unpaidCount?'🧾 Payment pending':row.open?'📌 In progress':'✓ Up to date';
     const notes = [];
     if (row.overdue) notes.push(`${row.overdue} overdue task${row.overdue===1?'':'s'}`);
     if (row.overdueInvoices) notes.push(`${row.overdueInvoices} overdue invoice${row.overdueInvoices===1?'':'s'}`);
     const avgPay = row.paidDays.length?Math.round(row.paidDays.reduce((sum,n)=>sum+n,0)/row.paidDays.length):null;
-    return `<article class="client-health-card ${tone}"><header class="client-card-header"><span class="client-avatar" aria-hidden="true">${osClientIcon(row.name)}</span><div><h4>${osEscape(row.name)}</h4><span class="client-status ${tone}">${status}</span></div></header><div class="health-metrics"><div><span>📌 Open this month</span><strong>${row.open} task${row.open===1?'':'s'}</strong></div><div><span>✅ Done this month</span><strong>${row.done} task${row.done===1?'':'s'}</strong></div><div><span>💰 Income received</span><strong>${osCurrency(row.income)}</strong></div><div><span>🧾 Awaiting payment</span><strong class="${row.overdueInvoices?'negative':''}">${osCurrency(row.unpaid)}</strong><small>${row.unpaidCount?row.unpaidCount+' unpaid invoice'+(row.unpaidCount===1?'':'s'):'No unpaid invoices'}</small></div></div>${notes.length?'<p class="health-attention-note">⚠️ '+notes.join(' · ')+'</p>':''}<footer class="client-card-foot"><span>🕒 ${Math.round(row.hours*10)/10} h estimated this month</span><span>💳 ${avgPay!=null?'Avg payment: '+avgPay+' days':'Payment speed: no history yet'}</span></footer></article>`;
+    return `<article class="client-health-card ${tone}"><header class="client-card-header"><span class="client-avatar" aria-hidden="true">${osClientIcon(row.name)}</span><div><h4>${osEscape(row.name)}</h4><span class="client-status ${tone}">${status}</span></div></header><div class="health-metrics"><div><span>📌 Open this month</span><strong>${row.open} task${row.open===1?'':'s'}</strong></div><div><span>✅ Done this month</span><strong>${row.done} task${row.done===1?'':'s'}</strong></div><div><span>💰 Income received</span><strong>${osCurrency(row.income)}</strong></div><div><span>🧾 Awaiting payment</span><strong class="${row.overdueInvoices?'negative':''}">${osCurrency(row.unpaid)}</strong><small>${row.unpaidCount?row.unpaidCount+' unpaid invoice'+(row.unpaidCount===1?'':'s'):'No unpaid invoices'}</small></div></div>${notes.length?'<p class="health-attention-note">⚠️ '+notes.join(' · ')+'</p>':''}<footer class="client-card-foot"><span>🕒 ${Math.round(row.hours*10)/10} h estimated this month</span><span>💳 ${avgPay!=null?'Avg payment: '+avgPay+' days':'Payment speed: no history yet'}</span>${quiet?`<span>📁 ${row.historyTasks} past tasks · ${row.lifetimeIncome?'Income history available':'No income history'}</span>`:''}</footer></article>`;
   });
   el.innerHTML = osClientCardsHTML(cards);
 }
 if (typeof module !== 'undefined' && module.exports) {
-  Object.assign(module.exports,{osClientWorkModel,osClientHealthModel,osClientIcon});
+  Object.assign(module.exports,{osClientWorkModel,osClientHealthModel,osClientIcon,osIsPersonalClient});
 }
