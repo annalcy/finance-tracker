@@ -47,7 +47,7 @@ let osPendingNavigation = null;
 const osPageInfo = {
   today: ['Today', 'A little space to focus on what matters.'],
   calendar: ['Your calendar', 'Make room for work, and everything around it.'],
-  insights: ['Your rhythm', 'A clearer picture of your time and work.'],
+  insights: ['Productivity insights', 'Your clients, workload, and progress at a glance.'],
   overview: ['Money overview', 'The bigger picture, without the noise.'],
   spending: ['Spending calendar', 'Your daily spending, in one view.'],
   add: ['Add an entry', 'Keep the little things accounted for.'],
@@ -276,4 +276,115 @@ function renderMoneyOverview() {
   // These existing cards are explicitly about the selected month/current week.
   if (monthly) {renderGoalCard();renderWeekCard();loadIncomePred();}
   else ['goal-card','week-card','income-pred-card'].forEach(id=>document.getElementById(id).style.display='none');
+}
+
+function osClientIcon(name) {
+  const icons = ['🌿','🎬','🎧','🎨','☀️','🪴','🧩','📷','🍊','🌼','🪁','💎'];
+  let hash = 0;
+  for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return icons[hash % icons.length];
+}
+function osClientWorkModel(tasks, normalize, dateOf, todayKey) {
+  const clients = new Map();
+  for (const task of tasks) {
+    const name = normalize(task.client);
+    if (!clients.has(name)) clients.set(name, {name, count:0,done:0,open:0,overdue:0,onTime:0,knownTiming:0,turnaround:[],active:[]});
+    const row = clients.get(name);
+    row.count++;
+    if (task.status === 'done') {
+      row.done++;
+      const completed = dateOf(task);
+      if (completed && task.deadlineDate) {row.knownTiming++;if(completed<=task.deadlineDate)row.onTime++;}
+      const created = new Date(task.createdAt);
+      if (completed && task.createdAt && !Number.isNaN(created.getTime())) {
+        const days = Math.round((Date.parse(completed+'T00:00:00Z')-Date.parse(created.toISOString().slice(0,10)+'T00:00:00Z'))/86400000);
+        if (days>=0) row.turnaround.push(days);
+      }
+    } else {
+      row.open++;
+      row.active.push(task);
+      if (task.deadlineDate && task.deadlineDate<todayKey) row.overdue++;
+    }
+  }
+  return [...clients.values()].sort((a,b)=>b.overdue-a.overdue||b.open-a.open||b.count-a.count||a.name.localeCompare(b.name));
+}
+function osClientHealthModel(tasks, entries, invoices, normalize, dateOf, todayKey) {
+  const month = todayKey.slice(0,7);
+  const clients = new Map();
+  function get(name) {
+    if (!clients.has(name)) clients.set(name,{name,done:0,open:0,overdue:0,hours:0,income:0,unpaid:0,unpaidCount:0,overdueInvoices:0,paidDays:[]});
+    return clients.get(name);
+  }
+  for (const task of tasks) {
+    const name = normalize(task.client);
+    if (name==='(no client)') continue;
+    const doneThisMonth = task.status==='done' && dateOf(task)?.startsWith(month);
+    const openThisMonth = task.status!=='done' && task.deadlineDate?.startsWith(month);
+    const overdue = task.status!=='done' && task.deadlineDate && task.deadlineDate<todayKey;
+    if (!doneThisMonth && !openThisMonth && !overdue) continue;
+    const row = get(name);
+    if (doneThisMonth) row.done++;
+    if (openThisMonth) row.open++;
+    if (overdue) row.overdue++;
+    if (doneThisMonth || openThisMonth) row.hours += (Number(task.estimateMinutes)||0)/60;
+  }
+  for (const entry of entries) {
+    if (entry.type==='income' && entry.client && entry.date?.startsWith(month)) get(normalize(entry.client)).income+=Number(entry.amount)||0;
+  }
+  for (const invoice of invoices) {
+    if (!invoice.client) continue;
+    const name = normalize(invoice.client);
+    if (invoice.status==='unpaid') {
+      const row = get(name);
+      row.unpaid += Number(invoice.amount)||0;
+      row.unpaidCount++;
+      if (invoice.dueDate && invoice.dueDate<todayKey) row.overdueInvoices++;
+    }
+  }
+  // Historical payment speed is context for active clients, not activity itself.
+  for (const invoice of invoices) {
+    const row = clients.get(normalize(invoice.client));
+    if (!row || invoice.status!=='paid' || !invoice.issueDate || !invoice.paidDate) continue;
+    const days = Math.round((Date.parse(invoice.paidDate+'T00:00:00Z')-Date.parse(invoice.issueDate+'T00:00:00Z'))/86400000);
+    if (Number.isFinite(days) && days>=0) row.paidDays.push(days);
+  }
+  return [...clients.values()].sort((a,b)=>(b.overdue+b.overdueInvoices)-(a.overdue+a.overdueInvoices)||b.unpaidCount-a.unpaidCount||b.open-a.open||a.name.localeCompare(b.name));
+}
+function osClientDisplayName(name) {return name==='(no client)'?'Personal / unassigned':name;}
+function osClientCardsHTML(cards) {
+  return cards.slice(0,4).join('')+(cards.length>4?`<details class="more-client-cards"><summary>Show ${cards.length-4} more clients</summary><div class="client-card-grid">${cards.slice(4).join('')}</div></details>`:'');
+}
+function renderClientWorkCards() {
+  const rows = osClientWorkModel(_tasksAll,normalizeClientName,taskDoneDateStr,today());
+  const el = document.getElementById('insights-client-chart');
+  if (!rows.length) {el.innerHTML='<div class="client-empty"><span aria-hidden="true">🌱</span><h4>Your clients will appear here</h4><p>Add a client name to a task to start seeing your workload.</p><button class="text-action" onclick="osQuickAdd()">+ Add a task</button></div>';return;}
+  const cards = rows.map(row=>{
+    const pct = Math.round(row.done/row.count*100);
+    const timing = row.knownTiming?Math.round(row.onTime/row.knownTiming*100)+'% on time':'No completion timing yet';
+    const average = row.turnaround.length?Math.round(row.turnaround.reduce((sum,n)=>sum+n,0)/row.turnaround.length*10)/10:null;
+    const active = [...row.active].sort((a,b)=>(a.deadlineDate||'9999').localeCompare(b.deadlineDate||'9999'));
+    return `<article class="client-work-card"><header class="client-card-header"><span class="client-avatar" aria-hidden="true">${row.name==='(no client)'?'🏡':osClientIcon(row.name)}</span><div><h4>${osEscape(osClientDisplayName(row.name))}</h4><span>${row.count} task${row.count===1?'':'s'} in total</span></div>${row.overdue?'<span class="client-status needs-attention">⏰ '+row.overdue+' overdue</span>':row.open?'<span class="client-status in-progress">In progress</span>':'<span class="client-status on-track">✓ All done</span>'}</header><div class="client-work-stats"><div><span aria-hidden="true">📌</span><strong>${row.open}</strong><small>Open</small></div><div><span aria-hidden="true">✅</span><strong>${row.done}</strong><small>Done</small></div><div><span aria-hidden="true">⏰</span><strong class="${row.overdue?'negative':''}">${row.overdue}</strong><small>Overdue</small></div></div><div class="client-progress-caption"><span>Completed</span><strong>${pct}%</strong></div><div class="quiet-progress client-progress" role="progressbar" aria-label="${osEscape(osClientDisplayName(row.name))} tasks completed" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%;background:var(--accent-soft)"></span></div><div class="client-card-foot"><span>🎯 ${timing}</span>${average!=null?`<span>↳ ${average} days avg turnaround</span>`:''}</div>${active.length?`<details class="client-task-details"><summary>See ${active.length} open task${active.length===1?'':'s'}</summary>${active.map(task=>`<div class="client-task-preview"><span>${osEscape(task.desc||'Untitled task')}</span><small class="${task.deadlineDate&&task.deadlineDate<today()?'negative':''}">${task.deadlineDate?'Due '+osEscape(task.deadlineDate):'No deadline'}</small></div>`).join('')}</details>`:''}</article>`;
+  });
+  el.innerHTML = osClientCardsHTML(cards);
+}
+function renderClientHealthCards() {
+  const todayKey = today();
+  const rows = osClientHealthModel(_tasksAll,_entries||[],_invoices||[],normalizeClientName,taskDoneDateStr,todayKey);
+  document.getElementById('client-health-period').textContent = new Intl.DateTimeFormat('en',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(todayKey+'T12:00:00Z'));
+  const el = document.getElementById('insights-client-health');
+  if (!rows.length) {el.innerHTML='<div class="client-empty"><span aria-hidden="true">🌤️</span><h4>A quiet month so far</h4><p>Client activity, income, and unpaid invoices will appear here as you log them.</p></div>';return;}
+  const cards = rows.map(row=>{
+    const attention = row.overdue || row.overdueInvoices;
+    const tone = attention?'needs-attention':row.unpaidCount?'awaiting-payment':row.open?'in-progress':'on-track';
+    const status = row.overdueInvoices?'🧾 Payment overdue':row.overdue?'⏰ Overdue work':row.unpaidCount?'🧾 Payment pending':row.open?'📌 In progress':'✓ Up to date';
+    const notes = [];
+    if (row.overdue) notes.push(`${row.overdue} overdue task${row.overdue===1?'':'s'}`);
+    if (row.overdueInvoices) notes.push(`${row.overdueInvoices} overdue invoice${row.overdueInvoices===1?'':'s'}`);
+    const avgPay = row.paidDays.length?Math.round(row.paidDays.reduce((sum,n)=>sum+n,0)/row.paidDays.length):null;
+    return `<article class="client-health-card ${tone}"><header class="client-card-header"><span class="client-avatar" aria-hidden="true">${osClientIcon(row.name)}</span><div><h4>${osEscape(row.name)}</h4><span class="client-status ${tone}">${status}</span></div></header><div class="health-metrics"><div><span>📌 Open this month</span><strong>${row.open} task${row.open===1?'':'s'}</strong></div><div><span>✅ Done this month</span><strong>${row.done} task${row.done===1?'':'s'}</strong></div><div><span>💰 Income received</span><strong>${osCurrency(row.income)}</strong></div><div><span>🧾 Awaiting payment</span><strong class="${row.overdueInvoices?'negative':''}">${osCurrency(row.unpaid)}</strong><small>${row.unpaidCount?row.unpaidCount+' unpaid invoice'+(row.unpaidCount===1?'':'s'):'No unpaid invoices'}</small></div></div>${notes.length?'<p class="health-attention-note">⚠️ '+notes.join(' · ')+'</p>':''}<footer class="client-card-foot"><span>🕒 ${Math.round(row.hours*10)/10} h estimated this month</span><span>💳 ${avgPay!=null?'Avg payment: '+avgPay+' days':'Payment speed: no history yet'}</span></footer></article>`;
+  });
+  el.innerHTML = osClientCardsHTML(cards);
+}
+if (typeof module !== 'undefined' && module.exports) {
+  Object.assign(module.exports,{osClientWorkModel,osClientHealthModel,osClientIcon});
 }

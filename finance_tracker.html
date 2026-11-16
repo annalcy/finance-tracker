@@ -509,8 +509,8 @@
   .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
   .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
-<link rel="stylesheet" href="os-redesign.css?v=20261116-2">
-<script src="os-redesign.js?v=20261116-2" defer></script>
+<link rel="stylesheet" href="os-redesign.css?v=20261116-3">
+<script src="os-redesign.js?v=20261116-3" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -749,8 +749,19 @@
   </div>
 
   <div id="page-insights" class="page">
+    <section class="client-insights-section" aria-labelledby="client-work-title">
+      <div class="insight-section-heading"><span class="section-emoji" aria-hidden="true">👥</span><div><h3 id="client-work-title">By client</h3><p>Your workload, progress, and what’s still open.</p></div><span class="insight-period-label">All-time tasks</span></div>
+      <div id="insights-client-chart" class="client-card-grid"></div>
+    </section>
+    <section class="client-insights-section" aria-labelledby="client-health-title">
+      <div class="insight-section-heading"><span class="section-emoji health-emoji" aria-hidden="true">💚</span><div><h3 id="client-health-title">Client health</h3><p>A quick check on your work and payments.</p></div><span class="insight-period-label" id="client-health-period"></span></div>
+      <p class="health-scope-note">Work and income this month · unpaid invoices and overdue work across all dates.</p>
+      <div id="insights-client-health" class="client-card-grid health-card-grid"></div>
+    </section>
+    <div class="insight-section-heading secondary-insights-heading"><span class="section-emoji" aria-hidden="true">✨</span><div><h3>Your work at a glance</h3><p>Patterns, deadlines, and the details behind your progress.</p></div></div>
+
     <!-- 1. Productivity insights (local, rule-based — no external API) -->
-    <div class="section-title">Productivity insights</div>
+    <div class="section-title"><span aria-hidden="true">💡</span> Productivity insights</div>
     <div class="form-card">
       <div id="insights-summary-text" style="font-size:13px;line-height:1.7;color:var(--ink)"></div>
     </div>
@@ -762,20 +773,20 @@
     </div>
 
     <!-- 3. Deadline Pressure Score -->
-    <div class="section-title" style="margin-top:1.5rem">Current pressure</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">🎯</span> Current pressure</div>
     <div class="form-card" id="insights-pressure-card"></div>
 
     <!-- 4. Overdue Age Tracker -->
-    <div class="section-title" style="margin-top:1.5rem">Overdue — time since deadline</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">⏰</span> Overdue — time since deadline</div>
     <div class="entries-list" id="insights-overdue-list"></div>
 
     <!-- 5. Time Distribution by Client -->
-    <div class="section-title" style="margin-top:1.5rem">Where your time goes</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">🕒</span> Where your time goes</div>
     <div class="summary-msg" id="insights-time-dist-sub"></div>
     <div class="entries-list" id="insights-time-dist"></div>
 
     <!-- 6. Productivity Pattern -->
-    <div class="section-title" style="margin-top:1.5rem">When you get things done</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">📅</span> When you get things done</div>
     <div class="form-card">
       <div id="insights-dow-chart"></div>
       <div class="summary-msg" id="insights-dow-sub" style="margin-top:6px"></div>
@@ -786,28 +797,20 @@
     </div>
 
     <!-- 7. Completion Rate -->
-    <div class="section-title" style="margin-top:1.5rem">Completion rate</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">✅</span> Completion rate</div>
     <div class="month-pills" id="insights-month-pills"></div>
     <div class="form-card" id="insights-completion-card"></div>
 
-    <!-- 8. By Client Breakdown -->
-    <div class="section-title" style="margin-top:1.5rem">By client</div>
-    <div class="entries-list" id="insights-client-chart"></div>
-
-    <!-- Client Health -->
-    <div class="section-title" style="margin-top:1.5rem">Client health</div>
-    <div id="insights-client-health"></div>
-
     <!-- Time Accuracy -->
-    <div class="section-title" style="margin-top:1.5rem">Time accuracy</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">⏱</span> Time accuracy</div>
     <div class="form-card" id="insights-time-accuracy"></div>
 
     <!-- 9. Postpone Tracker -->
-    <div class="section-title" style="margin-top:1.5rem">Most postponed</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">🔁</span> Most postponed</div>
     <div class="entries-list" id="insights-postpone-list"></div>
 
     <!-- 10. Task Completion Heatmap -->
-    <div class="section-title" style="margin-top:1.5rem">Task completion</div>
+    <div class="section-title" style="margin-top:1.5rem"><span aria-hidden="true">🗓</span> Task completion</div>
     <div id="insights-heatmap"></div>
     <div class="summary-msg" id="insights-heatmap-total" style="margin-top:8px"></div>
   </div>
@@ -2551,6 +2554,7 @@ function renderInsightsCompletion(){
 
 // ── 8. By Client Breakdown ──────────────────────────────────────────────────
 function renderInsightsClients(){
+  if(typeof renderClientWorkCards==='function'){renderClientWorkCards();return;}
   const byClient={};
   _tasksAll.forEach(t=>{
     const c=normalizeClientName(t.client);
@@ -2584,6 +2588,7 @@ function renderInsightsClients(){
 
 // ── Client Health ────────────────────────────────────────────────────────────
 function renderInsightsClientHealth(){
+  if(typeof renderClientHealthCards==='function'){renderClientHealthCards();return;}
   const monthStr=today().slice(0,7);
   const clients={};
   function ensure(name){
