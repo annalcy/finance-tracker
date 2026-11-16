@@ -509,8 +509,8 @@
   .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
   .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
-<link rel="stylesheet" href="os-redesign.css?v=20261116-4">
-<script src="os-redesign.js?v=20261116-4" defer></script>
+<link rel="stylesheet" href="os-redesign.css?v=20261116-5">
+<script src="os-redesign.js?v=20261116-5" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -2223,6 +2223,8 @@ const CLIENT_ALIASES = {
   ck:'CK', drip:'Drip Music', 'drip music':'Drip Music', lawrence:'Lawrence', sony:'Sony',
   cbeauty:'Cbeauty', momo:'Momo', isnhk:'ISNHK', minizine:'Minizine', interlude:'Interlude', sam:'Sam',
   oscar:'Oscar', livenation:'Live Nation', 'live nation':'Live Nation',
+  kc:'KC', afaa:'AFAA', nmg:'NMG', jk:'JK', kty:'KTY', lcy:'LCY', wyc:'WYC', isn:'ISN', oorh:'OORH',
+  yiuwing:'YiuWing', 'rami/rebone':'Rami/Rebone',
 };
 // Rough per-client rate for the "estimated value" pre-fill when marking a task
 // done — Anna edits the amount before confirming, this is just a starting point.
@@ -2249,7 +2251,7 @@ function normalizeClientName(raw){
   if(/^\/+$/u.test(s)) return 'Personal / helping out';
   const key=s.toLowerCase();
   if(CLIENT_ALIASES[key]) return CLIENT_ALIASES[key];
-  return s===s.toUpperCase()?s:s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
+  return s.charAt(0).toUpperCase()+s.slice(1).toLowerCase();
 }
 
 function dateStrAddDays(dateStr,delta){

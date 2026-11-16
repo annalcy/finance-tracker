@@ -71,3 +71,13 @@ test('completing helping-out tasks keeps the task but does not prompt for an inv
     assert.equal(ctx._pendingPaymentPromptId,expected);assert.equal(calls[0].method,'PATCH');
   }
 });
+test('app client aliases merge mixed-case names across tasks and historical income',()=>{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../finance_tracker.html'),'utf8');
+  const ctx={};vm.createContext(ctx);
+  vm.runInContext(html.match(/const CLIENT_ALIASES = \{[\s\S]*?\n\};/)[0]+'\n'+html.match(/function normalizeClientName\(raw\)\{[\s\S]*?\n\}/)[0],ctx);
+  const rows=osClientWorkModel([{client:'kc',status:'pending'}],ctx.normalizeClientName,dateOf,'2026-11-16',[{client:'KC',type:'income',amount:200}],[]);
+  assert.equal(rows.length,1);assert.equal(rows[0].name,'KC');assert.equal(rows[0].income,200);
+  assert.equal(ctx.normalizeClientName('//'),'Personal / helping out');
+  assert.equal(ctx.normalizeClientName('livenation'),ctx.normalizeClientName('live nation'));
+});
