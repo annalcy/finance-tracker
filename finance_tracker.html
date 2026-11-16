@@ -10,12 +10,19 @@
 <meta name="theme-color" id="theme-color-meta" content="#F7F6F2">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;450;500;550;600&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
 <script>
 (function(){
   // Apply saved theme/accent before first paint to avoid a flash of the wrong palette.
+  // Start this redesign in the light sage palette; later appearance choices persist.
+  if(localStorage.getItem('os_design_version')!=='sage-2026'){
+    localStorage.setItem('os_theme','light');
+    localStorage.setItem('os_accent','sage');
+    localStorage.setItem('os_design_version','sage-2026');
+  }
   var theme=localStorage.getItem('os_theme');
-  if(!theme || theme==='system') theme=(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+  if(!theme) theme='light';
+  if(theme==='system') theme=(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
   var accent=localStorage.getItem('os_accent')||'sage';
   document.documentElement.setAttribute('data-theme',theme);
   document.documentElement.setAttribute('data-accent',accent);
@@ -502,22 +509,35 @@
   .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
   .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
+<link rel="stylesheet" href="os-redesign.css">
+<script src="os-redesign.js" defer></script>
 </head>
 <body>
 <div class="shell">
 
-  <nav class="rail">
-    <div class="rail-mark">A</div>
-    <button class="rail-btn category-tab active" data-category="productivity" onclick="showCategory('productivity')" title="Productivity" aria-label="Productivity">🔥</button>
-    <button class="rail-btn category-tab" data-category="finance" onclick="showCategory('finance')" title="Finance" aria-label="Finance">💰</button>
-    <span class="rail-sep"></span>
-    <button class="rail-btn" onclick="railJump('calendar')" title="Calendar" aria-label="Jump to calendar">📅</button>
-    <button class="rail-btn" onclick="railJump('reports')" title="Reports" aria-label="Jump to reports">📊</button>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <nav class="rail" aria-label="Main navigation">
+    <a class="os-wordmark" href="#today" onclick="navigateOs('today');return false"><span class="rail-mark">a.</span><span>Anna’s OS<small>A little more in balance.</small></span></a>
+    <div class="nav-section-label">Your day</div>
+    <button class="os-nav" data-nav="today" onclick="navigateOs('today')"><span class="nav-symbol">◷</span>Today</button>
+    <button class="os-nav" data-nav="calendar" onclick="navigateOs('calendar')"><span class="nav-symbol">▦</span>Calendar</button>
+    <button class="os-nav" data-nav="insights" onclick="navigateOs('insights')"><span class="nav-symbol">↗</span>Insights</button>
+    <div class="nav-section-label money-label">Your money</div>
+    <button class="os-nav" data-nav="overview" onclick="navigateOs('overview')"><span class="nav-symbol">◫</span>Overview</button>
+    <button class="os-nav" data-nav="spending" onclick="navigateOs('spending')"><span class="nav-symbol">▦</span>Spending calendar</button>
+    <button class="os-nav" data-nav="add" onclick="cancelEdit();navigateOs('add')"><span class="nav-symbol">＋</span>Add entry</button>
+    <button class="os-nav" data-nav="records" onclick="navigateOs('records')"><span class="nav-symbol">≡</span>Records</button>
+    <button class="os-nav" data-nav="reports" onclick="navigateOs('reports')"><span class="nav-symbol">▥</span>Reports</button>
+    <button class="os-nav" data-nav="investments" onclick="navigateOs('reports','investments')"><span class="nav-symbol">⌁</span>Investments</button>
+    <button class="os-nav" data-nav="invoices" onclick="navigateOs('reports','invoices')"><span class="nav-symbol">▤</span>Invoices</button>
+    <button class="os-nav" data-nav="import" onclick="navigateOs('import')"><span class="nav-symbol">↓</span>Import CSV</button>
     <span class="rail-spacer"></span>
-    <button class="rail-btn" id="settings-trigger" onclick="toggleSettings()" aria-label="Appearance settings">◐</button>
+    <button class="os-nav" id="settings-trigger" onclick="toggleSettings()" aria-label="Appearance settings"><span class="nav-symbol">⚙</span>Appearance</button>
+    <div class="connection-note"><span></span>Telegram connected<small>Entries arrive automatically</small></div>
   </nav>
 
   <header class="topbar">
+    <button class="menu-toggle btn" onclick="toggleOsMenu()" aria-label="Toggle navigation" aria-expanded="false">☰</button>
     <div class="brand-row-text">
       <h2 class="brand-heading"><span class="brand-dot"></span>Anna's Personal OS</h2>
       <p class="brand-sub" id="brand-sub">Productivity</p>
@@ -537,7 +557,7 @@
       </div>
     </div>
     <div class="topbar-right">
-      <div class="monogram" title="Anna">A</div>
+      <button class="btn primary" id="header-add" onclick="osQuickAdd()">+ Add task</button><div class="monogram" title="Anna">A</div>
     </div>
     <div class="settings-popover" id="settings-popover">
       <div class="settings-label">Appearance</div>
@@ -550,14 +570,14 @@
       <div class="accent-swatch-row" id="accent-swatch-row">
         <button class="accent-swatch" data-accent-opt="sage" style="background:var(--accent)" onclick="setOsAccent('sage')" aria-label="Sage"></button>
         <button class="accent-swatch" data-accent-opt="terracotta" style="background:#C2652F" onclick="setOsAccent('terracotta')" aria-label="Terracotta"></button>
-        <button class="accent-swatch" data-accent-opt="indigo" style="background:#3A5BA0" onclick="setOsAccent('indigo')" aria-label="Indigo"></button>
-        <button class="accent-swatch" data-accent-opt="plum" style="background:#8E4B7C" onclick="setOsAccent('plum')" aria-label="Plum"></button>
+        <button class="accent-swatch" data-accent-opt="indigo" style="background:#3A5BA0" onclick="setOsAccent('indigo')" aria-label="Eucalyptus"></button>
+        <button class="accent-swatch" data-accent-opt="plum" style="background:#8E4B7C" onclick="setOsAccent('plum')" aria-label="Dusty rose"></button>
       </div>
     </div>
   </header>
 
-  <main class="app main">
-    <div class="data-note">Synced live to your Firebase backend — entries, invoices, and tasks logged via Telegram show up here automatically, no manual export needed.</div>
+  <main class="app main" id="main-content">
+    <div class="data-note">Your entries, tasks, and invoices stay in sync with Telegram.</div>
 
     <div id="finance-lock" class="lock-card" style="margin:2rem auto;display:none">
       <h2>🔒 Locked</h2>
@@ -638,6 +658,10 @@
         <div class="entries-list" id="recent-entries"></div>
       </div>
     </div>
+  </div>
+
+  <div id="page-spending" class="page">
+    <div id="spending-content"></div>
   </div>
 
   <div id="page-today" class="page active">
@@ -836,12 +860,15 @@
 
   <div id="page-reports" class="page">
     <div class="month-pills" id="report-view-toggle">
-      <span class="pill active" data-view="alltime" onclick="setReportView('alltime')">All-time overview</span>
-      <span class="pill" data-view="year" onclick="setReportView('year')">By year</span>
-      <span class="pill" data-view="investments" onclick="setReportView('investments')">Investments</span>
-      <span class="pill" data-view="invoices" onclick="setReportView('invoices')">Invoices</span>
-      <span class="pill" data-view="goal" onclick="setReportView('goal')">Goal</span>
+      <button type="button" class="pill" data-view="month" onclick="setReportView('month')">By month</button>
+      <button type="button" class="pill active" data-view="alltime" onclick="setReportView('alltime')">All-time overview</button>
+      <button type="button" class="pill" data-view="year" onclick="setReportView('year')">By year</button>
+      <button type="button" class="pill" data-view="investments" onclick="setReportView('investments')">Investments</button>
+      <button type="button" class="pill" data-view="invoices" onclick="setReportView('invoices')">Invoices</button>
+      <button type="button" class="pill" data-view="goal" onclick="setReportView('goal')">Goal</button>
     </div>
+
+    <div id="report-view-month" style="display:none"></div>
 
     <div id="report-view-alltime">
       <div class="metrics" id="metrics-alltime"></div>
@@ -1012,7 +1039,7 @@ function applyOsTheme(theme){
   var meta = document.querySelector('#theme-color-meta');
   if(meta) meta.setAttribute('content', resolved==='dark' ? '#17161B' : '#F7F6F2');
   document.querySelectorAll('[data-theme-opt]').forEach(function(b){
-    b.classList.toggle('active', b.dataset.themeOpt === (theme||'system'));
+    b.classList.toggle('active', b.dataset.themeOpt === (theme||'light'));
   });
 }
 function setOsTheme(theme){
@@ -1036,7 +1063,7 @@ function toggleSettings(){
 }
 document.addEventListener('click', function(e){
   var pop = document.getElementById('settings-popover'), trig = document.getElementById('settings-trigger');
-  if(pop && pop.classList.contains('open') && !pop.contains(e.target) && e.target!==trig) pop.classList.remove('open');
+  if(pop && pop.classList.contains('open') && !pop.contains(e.target) && !trig.contains(e.target)) pop.classList.remove('open');
 });
 function redrawChartsForTheme(){
   // Chart.js paints to <canvas>, which can't read CSS custom properties — re-render
@@ -1046,13 +1073,13 @@ function redrawChartsForTheme(){
   }
 }
 (function initAppearanceUI(){
-  var savedTheme = localStorage.getItem('os_theme') || 'system';
+  var savedTheme = localStorage.getItem('os_theme') || 'light';
   var savedAccent = localStorage.getItem('os_accent') || 'sage';
   applyOsTheme(savedTheme);
   applyOsAccent(savedAccent);
   if(window.matchMedia){
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(){
-      if((localStorage.getItem('os_theme')||'system')==='system'){ applyOsTheme('system'); redrawChartsForTheme(); }
+      if((localStorage.getItem('os_theme')||'light')==='system'){ applyOsTheme('system'); redrawChartsForTheme(); }
     });
   }
 })();
@@ -1241,13 +1268,15 @@ const SEED_DATA = [
 
 function getEntries(){return _entries;}
 async function _writeEntry(e){
-  await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)});
+  const res=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(e)});
+  if(!res.ok)throw new Error('Could not save entry');
 }
 async function _deleteDoc(id){
   await fetch(API+'?id='+id,{method:'DELETE'});
 }
 function renderCurrent(){
   if(_currentPage==='overview')renderOverview();
+  if(_currentPage==='spending')renderSpendingCalendar();
   if(_currentPage==='today')loadTasksForToday();
   if(_currentPage==='calendar')loadTasksForCalendar();
   if(_currentPage==='insights')loadTasksForInsights();
@@ -3119,6 +3148,7 @@ function renderConcentrationByYear(entries){
 
 function setReportView(v){
   _reportView=v;
+  document.getElementById('report-view-month').style.display=v==='month'?'':'none';
   document.getElementById('report-view-alltime').style.display=v==='alltime'?'':'none';
   document.getElementById('report-view-year').style.display=v==='year'?'':'none';
   document.getElementById('report-view-investments').style.display=v==='investments'?'':'none';
@@ -3126,6 +3156,7 @@ function setReportView(v){
   document.getElementById('report-view-goal').style.display=v==='goal'?'':'none';
   document.querySelectorAll('#report-view-toggle .pill').forEach(p=>p.classList.toggle('active',p.dataset.view===v));
   renderReports();
+  if(typeof syncOsShell==='function')syncOsShell();
 }
 
 // ── Investments ──────────────────────────────────────────────────────────────
@@ -3338,7 +3369,8 @@ function renderGoalReportView(){
 
 function renderReports(){
   const entries=getEntries();
-  if(_reportView==='alltime') renderAllTimeReportView(entries);
+  if(_reportView==='month') renderMonthlyReport();
+  else if(_reportView==='alltime') renderAllTimeReportView(entries);
   else if(_reportView==='year') renderByYearReportView(entries);
   else if(_reportView==='investments') loadInvestments();
   else if(_reportView==='invoices') loadInvoices();
@@ -3346,11 +3378,14 @@ function renderReports(){
 }
 
 function showPage(name){
+  if(['overview','spending','add','records','reports','import'].includes(name)&&sessionStorage.getItem('ft_unlocked')!=='1'){showCategory('finance');return;}
   _currentPage=name;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   document.querySelectorAll('.tab').forEach(t=>{if(t.dataset.page===name)t.classList.add('active');});
+  if(typeof syncOsShell==='function')syncOsShell();
+  if(name==='spending')renderSpendingCalendar();
   if(name==='overview')renderOverview();
   if(name==='today')loadTasksForToday();
   if(name==='calendar')loadTasksForCalendar();
@@ -3378,6 +3413,7 @@ function showCategory(cat){
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
     document.getElementById('finance-lock').style.display='';
     document.getElementById('lock-input').focus();
+    if(typeof syncOsShell==='function')syncOsShell(true);
     return;
   }
   document.getElementById('finance-lock').style.display='none';
@@ -3397,7 +3433,7 @@ async function tryUnlock(){
   const hash=await sha256Hex(input.value);
   if(hash===PASSCODE_HASH){
     sessionStorage.setItem('ft_unlocked','1');
-    showCategory('finance');
+    if(typeof resumeOsNavigation==='function')resumeOsNavigation();else showCategory('finance');
   }else{
     document.getElementById('lock-error').textContent='Wrong passcode';
     input.classList.remove('shake');void input.offsetWidth;input.classList.add('shake');
