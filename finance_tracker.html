@@ -509,8 +509,8 @@
   .os-card-body .task-card.focus-today { border-left: 3px solid var(--warning); padding-left: 11px; background: var(--warning-tint); }
   .os-card-body .task-card.focus-upcoming { border-left: 3px solid transparent; padding-left: 11px; }
 </style>
-<link rel="stylesheet" href="os-redesign.css?v=20261116-6">
-<script src="os-redesign.js?v=20261116-6" defer></script>
+<link rel="stylesheet" href="os-redesign.css?v=20261117-1">
+<script src="os-redesign.js?v=20261117-1" defer></script>
 </head>
 <body>
 <div class="shell">
@@ -1395,7 +1395,7 @@ function entryHTML(e){
     <div class="r-main">
       <span class="r-dot" style="background:${dc}"></span>
       <span class="r-title">${e.desc}</span>
-      ${e.client?`<span class="r-client">${e.client}</span>`:''}
+      ${e.client?`<span class="r-client">${normalizeClientName(e.client)}</span>`:''}
     </div>
     <div class="r-tag"><span class="chip" style="background:${bg};color:${tc}">${e.cat}</span></div>
     <div class="r-date">${e.date}</div>
@@ -1485,7 +1485,7 @@ function renderGoalCard(){
   if(isCurrentMonth&&_goal.behindTarget){
     text=`⚠️ ${fmt(_goal.behindAmount)} behind pace — ${_goal.weeksLeftInMonth} weeks left. `+text;
     if(_goal.unpaidInvoices&&_goal.unpaidInvoices.length){
-      const clients=[...new Set(_goal.unpaidInvoices.map(i=>i.client))].join(' and ');
+      const clients=[...new Set(_goal.unpaidInvoices.map(i=>normalizeClientName(i.client)))].join(' and ');
       text+=` · ${fmt(_goal.unpaidTotal)} outstanding from ${clients}`;
     }
   }
@@ -1585,7 +1585,7 @@ function renderIncomePredCard(){
     const meta=INCOME_STAGE_META[e.stage]||{label:e.stage,color:'var(--text-secondary)'};
     return `<div class="entry-row">
       <div style="flex:1;min-width:0">
-        <div style="font-weight:500">${e.client}${e.job_description?' — '+e.job_description:''}</div>
+        <div style="font-weight:500">${normalizeClientName(e.client)}${e.job_description?' — '+e.job_description:''}</div>
         <div style="font-size:11px;color:${meta.color}">${meta.label}</div>
       </div>
       <div class="entry-amount">${fmt(e.predicted_amount)}</div>
@@ -1618,7 +1618,7 @@ function renderInvoicesView(){
       :`<span class="badge-skip">${i.dueDate?'Due '+i.dueDate:'No due date'}</span>`;
     return `<div class="entry-row">
       <div style="flex:1;min-width:0">
-        <div class="entry-desc">${i.client}${i.description?' — '+i.description:''}</div>
+        <div class="entry-desc">${normalizeClientName(i.client)}${i.description?' — '+i.description:''}</div>
         <div class="entry-meta">${badge}</div>
       </div>
       <div class="entry-amount">${fmt(i.amount)}</div>
@@ -1813,7 +1813,7 @@ function taskCardHTML(t,opts){
     ?`<span class="task-badge" style="background:var(--negative-bg);color:var(--negative-text)">HARD</span>`
     :`<span class="task-badge" style="background:var(--warning-bg);color:var(--warning-text)">SOFT</span>`;
   const metaParts=[badge];
-  if(t.client) metaParts.push(/^\/+$/u.test(t.client.trim())?'🏡 Personal / helping out':t.client);
+  if(t.client) metaParts.push(/^\/+$/u.test(t.client.trim())?'🏡 Personal / helping out':normalizeClientName(t.client));
   metaParts.push(`due ${t.deadlineDate||'—'}`);
 
   let borderCls='';
@@ -2953,9 +2953,9 @@ function renderMarginChart(ye){
 
 function clientConcentration(ye){
   const inc=ye.filter(e=>e.type==='income');
-  const total=inc.reduce((s,e)=>s+e.amount,0);
+  const total=inc.reduce((s,e)=>s+Number(e.amount||0),0);
   const byClient={};
-  inc.forEach(e=>{const c=e.client||'No client tagged';byClient[c]=(byClient[c]||0)+e.amount;});
+  inc.forEach(e=>{const c=e.client?normalizeClientName(e.client):'No client tagged';byClient[c]=(byClient[c]||0)+Number(e.amount||0);});
   const sorted=Object.entries(byClient).sort((a,b)=>b[1]-a[1]);
   const top3=sorted.slice(0,3).map(([c,a])=>({client:c,amount:a,pct:total?Math.round(a/total*100):0}));
   const topPct=top3[0]?.pct||0;
@@ -3069,7 +3069,7 @@ function renderIncomeTrend(yt){
 function topClientsFor(entries,n=8){
   const inc=entries.filter(e=>e.type==='income'&&e.client);
   const totals={};
-  inc.forEach(e=>{totals[e.client]=(totals[e.client]||0)+e.amount;});
+  inc.forEach(e=>{const client=normalizeClientName(e.client);totals[client]=(totals[client]||0)+Number(e.amount||0);});
   return Object.entries(totals).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([client,amount])=>({client,amount}));
 }
 function clientRowsHTML(top){

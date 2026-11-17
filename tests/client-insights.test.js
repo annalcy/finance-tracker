@@ -81,3 +81,15 @@ test('app client aliases merge mixed-case names across tasks and historical inco
   assert.equal(ctx.normalizeClientName('//'),'Personal / helping out');
   assert.equal(ctx.normalizeClientName('livenation'),ctx.normalizeClientName('live nation'));
 });
+test('finance reports combine CK case variants in rankings and concentration',()=>{
+  const fs=require('node:fs'),vm=require('node:vm');
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../finance_tracker.html'),'utf8');
+  const ctx={};vm.createContext(ctx);
+  const source=[html.match(/const CLIENT_ALIASES = \{[\s\S]*?\n\};/)[0],...['normalizeClientName','clientConcentration','topClientsFor'].map(name=>html.match(new RegExp('function '+name+'\\([^]*?\\n\\}'))[0])].join('\n');
+  vm.runInContext(source,ctx);
+  const entries=[{type:'income',client:'CK',amount:100},{type:'income',client:' ck ',amount:'200'},{type:'income',client:'Other',amount:100},{type:'expense',client:'ck',amount:50}];
+  const rankings=JSON.parse(JSON.stringify(ctx.topClientsFor(entries)));
+  assert.deepEqual(rankings,[{client:'CK',amount:300},{client:'Other',amount:100}]);
+  const concentration=ctx.clientConcentration(entries);
+  assert.equal(concentration.top3.length,2);assert.equal(concentration.top3[0].client,'CK');assert.equal(concentration.top3[0].amount,300);assert.equal(concentration.topPct,75);
+});
